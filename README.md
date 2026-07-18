@@ -48,9 +48,12 @@ Also tell me to:
 Run this on your laptop (needs the AWS CLI, logged in). It creates a `t4g.nano`, installs everything, and starts the stack. The box refreshes from the git repo every 15 minutes.
 
 ```bash
-# 1. Pick a region and your existing EC2 key pair
+# 1. Pick a region, key pair, and the three .env settings the box will boot with
 REGION=us-west-1
 KEYPAIR=my-keypair
+STATUS_DOMAIN=status.example.com
+STATUS_TITLE='Service Status'
+TARGETS='microsoft=https://www.microsoft.com,google=https://www.google.com'
 
 # 2. Create a security group that allows SSH + HTTP + HTTPS
 VPC=$(aws ec2 describe-vpcs --region $REGION \
@@ -63,8 +66,9 @@ for p in 22 80 443; do
     --group-id $SG --protocol tcp --port $p --cidr 0.0.0.0/0
 done
 
-# 3. Write the boot script (clones repo, starts Docker, installs 15-min auto-update cron)
-cat > user-data.sh <<'EOF'
+# 3. Write the boot script (clones repo, writes .env, starts Docker, installs 15-min auto-update cron)
+#    Unquoted EOF so STATUS_* / TARGETS from step 1 are baked into the script.
+cat > user-data.sh <<EOF
 #!/bin/bash
 set -eux
 apt-get update
@@ -73,10 +77,15 @@ systemctl enable --now docker
 git clone https://github.com/MichaelCurrie/CurriePing.git /opt/currieping
 cd /opt/currieping
 cp .env.example .env
+sed -i \\
+  -e 's|^STATUS_DOMAIN=.*|STATUS_DOMAIN=${STATUS_DOMAIN}|' \\
+  -e 's|^STATUS_TITLE=.*|STATUS_TITLE=${STATUS_TITLE}|' \\
+  -e 's|^TARGETS=.*|TARGETS=${TARGETS}|' \\
+  .env
 docker compose up -d --build
 cp scripts/auto-update.sh /usr/local/bin/currieping-auto-update
 chmod +x /usr/local/bin/currieping-auto-update
-echo '*/15 * * * * root /usr/local/bin/currieping-auto-update' \
+echo '*/15 * * * * root /usr/local/bin/currieping-auto-update' \\
   > /etc/cron.d/currieping-auto-update
 chmod 644 /etc/cron.d/currieping-auto-update
 EOF
@@ -91,10 +100,8 @@ aws ec2 run-instances --region $REGION \
   --user-data file://user-data.sh \
   --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=currieping}]'
 
-# 5. Point DNS at the hostname with cloudflared
+# 5. Point DNS at STATUS_DOMAIN with cloudflared
 #    (Cloudflare proxy OFF — DNS only / grey cloud; Caddy needs a direct path for the cert)
-cloudflared tunnel route dns currieping status.example.com
-
-# 6. SSH in, edit /opt/currieping/.env (STATUS_DOMAIN, STATUS_TITLE, TARGETS, NTFY_URL),
-#    then: sudo docker compose up -d --build
+cloudflared tunnel route dns currieping "$STATUS_DOMAIN"
 ```
+

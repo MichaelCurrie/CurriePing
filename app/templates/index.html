@@ -63,7 +63,8 @@
     background: transparent;
     border: 3px solid var(--none);
     display: flex; align-items: center; justify-content: center;
-    position: relative; cursor: default;
+    position: relative; cursor: pointer;
+    text-decoration: none; color: inherit;
   }
   .now-block.up { border-color: var(--up); }
   .now-block.down { border-color: var(--down); }
@@ -283,7 +284,7 @@ function renderNowStrip(components) {
     const icon = c.icon
       ? `<img class="favicon" src="${c.icon}" alt="" loading="lazy" onerror="this.remove()">`
       : "";
-    return `<div class="now-block ${cls}" data-tip="${tip}">${icon}</div>`;
+    return `<a class="now-block ${cls}" href="${c.url}" target="_blank" rel="noopener" data-tip="${tip}" aria-label="${escapeAttr(c.name)}">${icon}</a>`;
   }).join("");
 }
 
