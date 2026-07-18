@@ -59,18 +59,18 @@
   }
   .now-block {
     flex: 1 1 48px; min-width: 36px; max-width: 80px;
-    height: 32px; border-radius: 3px;
-    background: var(--none);
+    height: 36px; border-radius: 4px;
+    background: transparent;
+    border: 3px solid var(--none);
     display: flex; align-items: center; justify-content: center;
     position: relative; cursor: default;
   }
-  .now-block.up { background: var(--up); }
-  .now-block.down { background: var(--down); }
-  .now-block.unknown { background: var(--none); }
+  .now-block.up { border-color: var(--up); }
+  .now-block.down { border-color: var(--down); }
+  .now-block.unknown { border-color: var(--none); }
   .now-block .favicon {
-    width: 16px; height: 16px;
+    width: 18px; height: 18px;
     object-fit: contain;
-    /* Keep alpha: the status fill should show through transparent favicons. */
   }
 
   .component {
