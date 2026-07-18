@@ -4,7 +4,7 @@
 [![CircleCI](https://img.shields.io/circleci/build/github/MichaelCurrie/CurriePing/main)](https://app.circleci.com/pipelines/github/MichaelCurrie/CurriePing)
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](LICENSE)
 
-A tiny self-hosted uptime monitor in the style of [Atlassian Statuspage](https://status.claude.com). It **pings the sites itself** on an interval and stores results in SQLite. Alerts to your phone/email via [https://ntfy.sh/](ntfy.sh). 
+A tiny self-hosted uptime monitor in the style of [Atlassian Statuspage](https://status.claude.com). It **pings your sites** on an interval and stores results in SQLite. It sends alerts to your phone or email via [https://ntfy.sh/](ntfy.sh).
 
 ## Example
 
