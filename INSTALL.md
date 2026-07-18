@@ -9,11 +9,11 @@ Afterwards, the box refreshes to the latest version of CurriePing from the git r
 2. Run this on your local machine (ask any LLM to translate to Powershell if needed):
 
 ```bash
-# 1. Pick a region, key pair, and the three .env settings the box will boot with
+# 1. Pick a .env settings
 REGION=us-west-1
 KEYPAIR=my-keypair
 STATUS_DOMAIN=status.example.com
-STATUS_TITLE='Service Status'
+STATUS_TITLE='My Service Status'
 TARGETS='microsoft=https://www.microsoft.com,google=https://www.google.com'
 
 # 2. Create a security group that allows SSH + HTTP + HTTPS
