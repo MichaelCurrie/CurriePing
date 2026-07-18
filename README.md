@@ -2,6 +2,14 @@
 
 A tiny self-hosted uptime monitor with a status page in the style of [Atlassian Statuspage](https://status.claude.com). It **pings the sites itself** on an interval and stores results in SQLite.
 
+## Example
+
+https://status.michaelcurrie.com
+
+<img width="633" height="326" alt="image" src="https://github.com/user-attachments/assets/19847f23-c202-462a-adf5-fac50104476f" />
+
+## Comparison
+
 | Tool | Subscription cost / month | Max sites monitored | Hosting cost / month |
 |---|---|---|---|
 | [Better Stack](https://betterstack.com/pricing) | **$29** | 50 | — |
@@ -10,12 +18,6 @@ A tiny self-hosted uptime monitor with a status page in the style of [Atlassian 
 | [UptimeRobot](https://uptimerobot.com/pricing/) | **$9** | 50 | — |
 | [Uptime Kuma](https://github.com/louislam/uptime-kuma) | **$0** | unlimited | ~1 GB RAM → `t4g.micro` ~ **$6** |
 | **CurriePing** | **$0** | **unlimited** | 0.5 GB RAM → `t4g.nano` ~ **$3** |
-
-## Example
-
-https://status.michaelcurrie.com
-
-<img width="633" height="326" alt="image" src="https://github.com/user-attachments/assets/19847f23-c202-462a-adf5-fac50104476f" />
 
 ## How to Deploy
 
