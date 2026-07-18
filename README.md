@@ -11,18 +11,9 @@ A tiny self-hosted uptime monitor with a status page in the style of [status.cla
 | [Uptime Kuma](https://github.com/louislam/uptime-kuma) | **$0** | unlimited | ~1 GB RAM → `t4g.micro` ~ **$6** |
 | **CurriePing** | **$0** | **unlimited** | 0.5 GB RAM → `t4g.nano` ~ **$3** |
 
-```
-┌ Service Status ─────────────────────────────────────────┐
-│  ● All Systems Operational                               │
-│                                                          │
-│  microsoft.com                     Operational · 100%    │
-│  ▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏  (green bars)   │
-│  90 days ago                                      Today  │
-│                                                          │
-│  api.google.com                    Operational · 99.8%   │
-│  ▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏▏  (mostly green) │
-└──────────────────────────────────────────────────────────┘
-```
+## Example
+
+https://status.michaelcurrie.com
 
 ## How to Deploy
 
