@@ -13,14 +13,14 @@ Runs on the smallest cloud box there is (a `t4g.nano`, 0.5 GB RAM) for a flat
 The paid services host everything for you but charge **per monitor**. The
 self-hosted tools are free to license — you just pay for the box they run on.
 
-| Tool | Type | Monthly price | Sites (monitors) | Machine you run |
-|---|---|---|---|---|
-| [Pingdom](https://www.pingdom.com/pricing/) | Paid SaaS | from **$15**/mo (10) → **$199+**/mo (250) | tiered, pay per tier | none (hosted) |
-| [UptimeRobot](https://uptimerobot.com/pricing/) | Paid SaaS | **$9**/mo (50) · **$38**/mo (100) | tiered | none (hosted) |
-| [Better Stack](https://betterstack.com/pricing) | Paid SaaS | from **$29**/mo (50) | tiered + add-ons | none (hosted) |
-| [StatusCake](https://www.statuscake.com/pricing/) | Paid SaaS | from **~$20**/mo (100) | tiered | none (hosted) |
-| [Uptime Kuma](https://github.com/louislam/uptime-kuma) | Open source, self-host | $0 license + box | unlimited | ~1 GB RAM recommended → `t4g.micro` ≈ **$6/mo** |
-| **CurriePing** | Open source, self-host | $0 license + box ≈ **$2–3/mo** | **unlimited** | 0.5 GB RAM → `t4g.nano` |
+| Tool | Monthly price | Max sites monitored | Monthly hosting cost |
+|---|---|---|---|
+| [Pingdom](https://www.pingdom.com/pricing/) | **$15** | 10 | — |
+| [UptimeRobot](https://uptimerobot.com/pricing/) | **$9** | 50 | — |
+| [Better Stack](https://betterstack.com/pricing) | **$29** | 50 | — |
+| [StatusCake](https://www.statuscake.com/pricing/) | **~$20** | 100 | — |
+| [Uptime Kuma](https://github.com/louislam/uptime-kuma) | **$0** | unlimited | ~1 GB RAM → `t4g.micro` ~ **$6** |
+| **CurriePing** | **$0** | **unlimited** | 0.5 GB RAM → `t4g.nano` ~ **$2–3** |
 
 Prices as of July 2026; SaaS tiers are billed-annually starting rates. `t4g.nano`
 is ~$3.07/mo on-demand, ≈$2/mo on a 1-year Savings Plan.
