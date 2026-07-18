@@ -41,6 +41,16 @@ def init(db_path: str) -> None:
     _conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_checks_target_ts ON checks(target, ts)"
     )
+    _conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS favicons (
+            target       TEXT    PRIMARY KEY,
+            data         BLOB    NOT NULL,
+            content_type TEXT    NOT NULL,
+            fetched_at   INTEGER NOT NULL
+        )
+        """
+    )
     _conn.commit()
 
 
@@ -67,6 +77,37 @@ def prune(older_than_days: int) -> None:
     with _lock:
         _conn.execute("DELETE FROM checks WHERE ts < ?", (cutoff,))
         _conn.commit()
+
+
+def save_favicon(target: str, data: bytes, content_type: str) -> None:
+    assert _conn is not None
+    with _lock:
+        _conn.execute(
+            "INSERT OR REPLACE INTO favicons (target, data, content_type, fetched_at) "
+            "VALUES (?, ?, ?, ?)",
+            (target, sqlite3.Binary(data), content_type, int(time.time())),
+        )
+        _conn.commit()
+
+
+def get_favicon(target: str) -> tuple[bytes, str] | None:
+    assert _conn is not None
+    with _lock:
+        row = _conn.execute(
+            "SELECT data, content_type FROM favicons WHERE target = ?", (target,)
+        ).fetchone()
+    if row is None:
+        return None
+    return bytes(row[0]), row[1]
+
+
+def has_favicon(target: str) -> bool:
+    assert _conn is not None
+    with _lock:
+        row = _conn.execute(
+            "SELECT 1 FROM favicons WHERE target = ?", (target,)
+        ).fetchone()
+    return row is not None
 
 
 def _latest(target: str) -> dict | None:
