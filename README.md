@@ -15,6 +15,8 @@ A tiny self-hosted uptime monitor with a status page in the style of [Atlassian 
 
 https://status.michaelcurrie.com
 
+<img width="633" height="326" alt="image" src="https://github.com/user-attachments/assets/19847f23-c202-462a-adf5-fac50104476f" />
+
 ## How to Deploy
 
 ### Via one-shot LLM prompt
