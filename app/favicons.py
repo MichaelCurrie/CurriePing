@@ -102,6 +102,12 @@ def fetch_favicon(url: str) -> tuple[bytes, str] | None:
         f"https://www.google.com/s2/favicons?sz=64&domain={parsed.netloc}"
     )
 
+    # Prefer raster (ICO/PNG) over SVG: SVG favicons render unreliably inside an
+    # <img> (currentColor / prefers-color-scheme tricks can make them invisible),
+    # so try any raster candidate first and fall back to .svg only if that's all
+    # a site offers. Stable sort keeps the site's declared order within each group.
+    candidates.sort(key=lambda u: u.split("?", 1)[0].lower().endswith(".svg"))
+
     seen = set()
     for icon_url in candidates:
         if icon_url in seen:
