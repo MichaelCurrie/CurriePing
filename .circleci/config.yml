@@ -1,0 +1,80 @@
+# Python lint/type checks only (no JS). Mirrors the Python half of PixelGoose's
+# CircleCI job, without reviewdog — this repo is low-traffic so console
+# failures are enough.
+version: 2.1
+
+jobs:
+  lint:
+    docker:
+      - image: cimg/python:3.12
+    environment:
+      RUFF_CONFIG: "pyproject.toml"
+    steps:
+      - checkout
+
+      - run:
+          name: Install Python dependencies and linting tools
+          command: |
+            python -m pip install --upgrade pip
+            pip install -r requirements-dev.txt
+
+      - run:
+          name: Verify Ruff version parity
+          command: |
+            set -euo pipefail
+            expected="$(python - <<'PY'
+            from pathlib import Path
+
+            for line in Path("requirements-dev.txt").read_text().splitlines():
+                if line.startswith("ruff=="):
+                    print(line.split("==", 1)[1])
+                    break
+            else:
+                raise SystemExit("requirements-dev.txt must pin ruff==<version>")
+            PY
+            )"
+            actual="$(ruff --version | awk '{print $2}')"
+            if [ "$actual" != "$expected" ]; then
+              echo "Ruff version mismatch: requirements-dev.txt pins ${expected}, but CI installed ${actual}."
+              exit 1
+            fi
+            echo "Ruff version parity verified: ${actual}"
+
+      - run:
+          name: Ruff format check
+          command: ruff format --check --force-exclude .
+
+      - run:
+          name: Ruff lint
+          command: ruff check --force-exclude .
+
+      - run:
+          name: Mypy (strict)
+          command: mypy --strict .
+
+      - run:
+          name: ty
+          command: ty check .
+
+      - run:
+          name: Vulture (fail on unreachable/unsatisfiable)
+          command: |
+            set -euo pipefail
+            mkdir -p reports
+            vulture . > reports/vulture.txt || true
+            grep -E "(unreachable|unsatisfiable)" reports/vulture.txt > reports/vulture-critical.txt || true
+            if [ -s reports/vulture-critical.txt ]; then
+              echo "Vulture found unreachable/unsatisfiable code:"
+              cat reports/vulture-critical.txt
+              exit 1
+            fi
+            echo "No critical Vulture issues found."
+
+      - store_artifacts:
+          path: reports
+          destination: lint-reports
+
+workflows:
+  lint:
+    jobs:
+      - lint

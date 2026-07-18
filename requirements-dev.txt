@@ -1,0 +1,11 @@
+# Dev/CI tooling. Install the same file locally and in CircleCI so mypy/ty
+# see real library types (missing deps silently become Any under our mypy
+# suppressions and cause CI/local drift).
+-r app/requirements.txt
+
+# Pin versions; the `ruff==` line is parsed by CircleCI version-parity check.
+ruff==0.14.11
+ty==0.0.11
+vulture==2.14
+mypy==1.19.1
+types-requests

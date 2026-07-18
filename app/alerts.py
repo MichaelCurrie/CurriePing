@@ -30,12 +30,14 @@ def _enabled() -> bool:
     return bool(config.NTFY_URL)
 
 
-def _detail(result: dict) -> str:
+def _detail(result: dict[str, object]) -> str:
     status_code = result.get("status_code")
     error = result.get("error")
-    return error or (
-        f"HTTP {status_code}" if status_code is not None else "unreachable"
-    )
+    if isinstance(error, str) and error:
+        return error
+    if status_code is not None:
+        return f"HTTP {status_code}"
+    return "unreachable"
 
 
 def _post(title: str, body: str, tags: str, priority: str) -> None:
@@ -56,17 +58,17 @@ def _post(title: str, body: str, tags: str, priority: str) -> None:
         raise
 
 
-def process(results: list[dict]) -> None:
+def process(results: list[dict[str, object]]) -> None:
     """Evaluate a cycle's results; notify only when the down-set changes."""
     if not _enabled():
         return
     with _lock:
-        detail_by_site: dict[str, dict] = {}
+        detail_by_site: dict[str, dict[str, object]] = {}
         for r in results:
             if not r:
                 continue
             name = r.get("target")
-            if name is None:
+            if not isinstance(name, str):
                 continue
             detail_by_site[name] = r
             if r.get("ok"):

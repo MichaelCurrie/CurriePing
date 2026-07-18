@@ -119,7 +119,7 @@ def favicon_fetched_at(target: str) -> int | None:
     return int(row[0]) if row else None
 
 
-def _latest(target: str) -> dict | None:
+def _latest(target: str) -> dict[str, object] | None:
     assert _conn is not None
     row = _conn.execute(
         "SELECT ts, ok, status_code, latency_ms, error FROM checks "
@@ -137,7 +137,7 @@ def _latest(target: str) -> dict | None:
     }
 
 
-def _recent_pings(target: str, count: int) -> list[dict]:
+def _recent_pings(target: str, count: int) -> list[dict[str, object]]:
     """Newest `count` individual checks, returned oldest -> newest (left to right)."""
     assert _conn is not None
     rows = _conn.execute(
@@ -145,7 +145,7 @@ def _recent_pings(target: str, count: int) -> list[dict]:
         "WHERE target = ? ORDER BY ts DESC LIMIT ?",
         (target, count),
     ).fetchall()
-    pings: list[dict] = []
+    pings: list[dict[str, object]] = []
     for ts, ok, status_code, latency_ms, error in reversed(rows):
         pings.append(
             {
@@ -160,7 +160,7 @@ def _recent_pings(target: str, count: int) -> list[dict]:
     # Pad on the left so the row always has `count` slots (matches daily bar count).
     missing = count - len(pings)
     if missing > 0:
-        empty = {
+        empty: dict[str, object] = {
             "ts": None,
             "ok": None,
             "state": "none",
@@ -174,7 +174,7 @@ def _recent_pings(target: str, count: int) -> list[dict]:
 
 def component(
     target: str, days: int, recent_count: int, check_interval_seconds: int
-) -> dict:
+) -> dict[str, object]:
     """Return daily buckets, recent per-ping bars, uptime %, and latest result.
 
     Daily row: one bar per UTC day over `days`.
@@ -195,7 +195,7 @@ def component(
         latest = _latest(target)
 
     today = datetime.now(timezone.utc).date()
-    buckets: list[dict] = []
+    buckets: list[dict[str, object]] = []
     up_sum = 0
     total_sum = 0
     for i in range(days - 1, -1, -1):

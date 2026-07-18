@@ -20,7 +20,7 @@ _started = False
 _lock = threading.Lock()
 
 
-def check_one(target: config.Target) -> dict:
+def check_one(target: config.Target) -> dict[str, object]:
     start = time.monotonic()
     status_code: int | None = None
     error: str | None = None

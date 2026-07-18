@@ -16,24 +16,26 @@ checker.start()
 favicons.start()
 
 
-def _overall(components: list[dict]) -> str:
+def _overall(components: list[dict[str, object]]) -> str:
     states = {c["status"] for c in components}
     if not components or states == {"unknown"}:
         return "unknown"
     if "down" in states:
         return "down"
-    if any(
-        b["state"] == "partial"
-        for c in components
-        for b in c["buckets"][-1:]  # only today's bucket signals current degradation
-    ):
-        return "degraded"
+    # Only today's bucket signals current degradation.
+    for component in components:
+        buckets = component.get("buckets")
+        if not isinstance(buckets, list) or not buckets:
+            continue
+        today = buckets[-1]
+        if isinstance(today, dict) and today.get("state") == "partial":
+            return "degraded"
     if "unknown" in states and states != {"operational", "unknown"}:
         return "degraded"
     return "operational"
 
 
-def _build_status() -> dict:
+def _build_status() -> dict[str, object]:
     # Recent row uses the same bar count as the daily row so the two stacks align.
     recent_count = config.HISTORY_DAYS
     components = []
@@ -86,10 +88,11 @@ def api_status():
 
 
 @app.route("/icon/<name>")
-def icon(name):
+def icon(name: str) -> Response:
     fav = store.get_favicon(name)
     if fav is None:
         abort(404)
+        raise AssertionError("abort() does not return")
     data, content_type, fetched_at = fav
     return Response(
         data,

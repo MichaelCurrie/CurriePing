@@ -1,0 +1,49 @@
+[project]
+name = "CurriePing"
+description = "A lightweight self-hosted uptime monitor"
+readme = "README.md"
+requires-python = ">=3.12"
+
+[tool.mypy]
+python_version = "3.12"
+# Match PixelGoose: CI and editors both run `mypy --strict`; strict here keeps
+# a bare `mypy .` in lockstep. Untyped defs stay muted (Flask routes); every
+# other strict diagnostic is enforced. Third-party stubs are outside our control.
+strict = true
+ignore_missing_imports = false
+show_error_codes = true
+pretty = true
+explicit_package_bases = true
+files = ["app"]
+disable_error_code = [
+  "no-untyped-def",
+  "import-untyped",
+  "import-not-found",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+src = ["app"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+extend-ignore = [
+  "E203",
+  "E501",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "lf"
+
+[tool.vulture]
+paths = ["app"]
+min_confidence = 60
+# Flask registers these via @app.route; vulture cannot see that call graph.
+ignore_names = ["index", "api_status", "icon", "healthz"]
+
+[tool.ty.environment]
+root = ["."]

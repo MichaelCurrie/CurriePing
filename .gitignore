@@ -5,3 +5,8 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.ty_cache/
+reports/

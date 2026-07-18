@@ -1,0 +1,1 @@
+"""CurriePing application package."""
