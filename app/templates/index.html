@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }}</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --text: #1f2933;
+    --muted: #6b7480;
+    --border: #e7eaee;
+    --up: #26a269;
+    --partial: #e5a13a;
+    --down: #d9463e;
+    --none: #e4e7eb;
+    --radius: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171a;
+      --card: #1c2024;
+      --text: #e7eaee;
+      --muted: #9aa4af;
+      --border: #2a2f35;
+      --none: #2a2f35;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 40px 20px 80px; }
+  header.page { text-align: center; margin-bottom: 28px; }
+  header.page h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; }
+  header.page .sub { color: var(--muted); font-size: 13px; }
+
+  .banner {
+    display: flex; align-items: center; gap: 12px;
+    padding: 18px 22px; border-radius: var(--radius);
+    color: #fff; font-weight: 600; font-size: 17px;
+    margin-bottom: 28px;
+  }
+  .banner .dot { width: 12px; height: 12px; border-radius: 50%; background: rgba(255,255,255,.9); }
+  .banner.operational { background: var(--up); }
+  .banner.degraded    { background: var(--partial); }
+  .banner.down        { background: var(--down); }
+  .banner.unknown     { background: var(--muted); }
+
+  .component {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px 16px;
+    margin-bottom: 14px;
+  }
+  .component .top {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+    margin-bottom: 12px;
+  }
+  .component .name { font-weight: 600; font-size: 15px; text-decoration: none; color: var(--text); }
+  .component .name:hover { text-decoration: underline; }
+  .component .state { font-size: 13px; font-weight: 500; }
+  .state.operational { color: var(--up); }
+  .state.down        { color: var(--down); }
+  .state.degraded    { color: var(--partial); }
+  .state.unknown     { color: var(--muted); }
+
+  .bars { display: flex; gap: 2px; align-items: stretch; height: 34px; }
+  .bar { flex: 1 1 0; border-radius: 2px; background: var(--none); min-width: 2px; }
+  .bar.up { background: var(--up); }
+  .bar.partial { background: var(--partial); }
+  .bar.down { background: var(--down); }
+
+  .axis {
+    display: flex; justify-content: space-between;
+    color: var(--muted); font-size: 11px; margin-top: 7px;
+  }
+  .axis .mid { flex: 1; text-align: center; }
+
+  footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 26px; }
+  .tip { position: relative; cursor: default; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="page">
+      <h1>{{ title }}</h1>
+      <div class="sub" id="updated">Loading…</div>
+    </header>
+
+    <div class="banner unknown" id="banner">
+      <span class="dot"></span>
+      <span id="banner-text">Loading status…</span>
+    </div>
+
+    <div id="components"></div>
+
+    <footer>
+      Checks run every <span id="interval">–</span>s over the last {{ history_days }} days.
+      <br>Auto-refreshes; last updated <span id="ago">just now</span>.
+    </footer>
+  </div>
+
+<script>
+const HISTORY_DAYS = {{ history_days }};
+
+const BANNER_TEXT = {
+  operational: "All Systems Operational",
+  degraded: "Partial Service Degradation",
+  down: "Major Service Outage",
+  unknown: "Awaiting First Checks",
+};
+const STATE_TEXT = {
+  operational: "Operational",
+  down: "Down",
+  degraded: "Degraded",
+  unknown: "No data yet",
+};
+
+function barTitle(b) {
+  if (b.state === "none") return `${b.date}: no data`;
+  const pct = (b.ratio * 100).toFixed(b.ratio === 1 ? 0 : 1);
+  return `${b.date}: ${pct}% up (${b.up}/${b.total} checks)`;
+}
+
+function renderComponent(c) {
+  const el = document.createElement("div");
+  el.className = "component";
+
+  const uptime = c.uptime === null ? "" :
+    `<span title="uptime over window with data">${c.uptime}% uptime</span>`;
+  const stateText = STATE_TEXT[c.status] || c.status;
+
+  const bars = c.buckets.map(b =>
+    `<div class="bar ${b.state === 'none' ? '' : b.state}" title="${barTitle(b)}"></div>`
+  ).join("");
+
+  el.innerHTML = `
+    <div class="top">
+      <a class="name" href="${c.url}" target="_blank" rel="noopener">${c.name}</a>
+      <span class="state ${c.status}">${stateText}${uptime ? " · " + uptime : ""}</span>
+    </div>
+    <div class="bars">${bars}</div>
+    <div class="axis">
+      <span>${HISTORY_DAYS} days ago</span>
+      <span class="mid"></span>
+      <span>Today</span>
+    </div>`;
+  return el;
+}
+
+let lastUpdate = null;
+
+// Wikidata items for timezone abbreviations (extend as needed).
+const TZ_WIKIDATA = { EDT: "Q941023" };
+
+function formatUpdated(d) {
+  // 24-hour clock in the viewer's own timezone.
+  const time = new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+  }).format(d);
+  // Short timezone name for the viewer's zone (e.g. "EDT", "GMT+8").
+  const parts = new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit", timeZoneName: "short", hourCycle: "h23",
+  }).formatToParts(d);
+  const tz = (parts.find(p => p.type === "timeZoneName") || {}).value || "";
+  const href = TZ_WIKIDATA[tz]
+    ? "https://www.wikidata.org/wiki/" + TZ_WIKIDATA[tz]
+    : "https://www.wikidata.org/w/index.php?search=" + encodeURIComponent(tz);
+  const tzLink = tz
+    ? ` <a href="${href}" target="_blank" rel="noopener">${tz}</a>`
+    : "";
+  return time + tzLink;
+}
+
+async function refresh() {
+  try {
+    const res = await fetch("/api/status", { cache: "no-store" });
+    const data = await res.json();
+
+    const banner = document.getElementById("banner");
+    banner.className = "banner " + data.overall;
+    document.getElementById("banner-text").textContent =
+      BANNER_TEXT[data.overall] || data.overall;
+
+    const container = document.getElementById("components");
+    container.innerHTML = "";
+    data.components.forEach(c => container.appendChild(renderComponent(c)));
+
+    document.getElementById("interval").textContent = data.check_interval_seconds;
+    const d = new Date(data.generated_at * 1000);
+    document.getElementById("updated").textContent =
+      data.components.length + " services monitored";
+    lastUpdate = Date.now();
+    document.getElementById("ago").innerHTML = formatUpdated(d);
+  } catch (e) {
+    document.getElementById("banner-text").textContent = "Unable to load status";
+  }
+}
+
+refresh();
+setInterval(refresh, 30000);
+</script>
+</body>
+</html>

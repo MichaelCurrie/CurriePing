@@ -1,0 +1,45 @@
+# CurriePing — lightweight uptime monitor.
+#
+#   cp .env.example .env   # then edit TARGETS (+ STATUS_DOMAIN for HTTPS)
+#   docker compose up -d --build
+#
+# With STATUS_DOMAIN set, Caddy auto-provisions a Let's Encrypt cert for it.
+# With it blank, Caddy serves plain HTTP on :80 (handy for local testing).
+
+services:
+  status:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - status-data:/data
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8080/healthz',timeout=5).status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # `:-:80` => when STATUS_DOMAIN is blank/unset, Caddy binds ":80" and
+      # serves plain HTTP. Compose applies the default for empty values; Caddy's
+      # own in-file default does not, hence resolving it here.
+      - STATUS_DOMAIN=${STATUS_DOMAIN:-:80}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - status
+
+volumes:
+  status-data:
+  caddy-data:
+  caddy-config:
