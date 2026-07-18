@@ -1,6 +1,12 @@
-### Deploy on a fresh AWS box (public HTTPS via your own domain)
+### Deploy to AWS EC2
 
-Run this on your local machine (needs the AWS CLI, logged in). It creates a `t4g.nano`, installs everything, and starts the stack. The box refreshes from the git repo every 15 minutes.
+These commands will launch a `t4g.nano` EC2 instance, install everything, and starts the stack.
+
+Afterwards, the box refreshes to the latest version of CurriePing from the git repo every 15 minutes forever.
+
+1. Install `aws` CLI and `cloudflared` and get API credentials for both.
+
+2. Run this on your local machine (ask any LLM to translate to Powershell if needed):
 
 ```bash
 # 1. Pick a region, key pair, and the three .env settings the box will boot with
