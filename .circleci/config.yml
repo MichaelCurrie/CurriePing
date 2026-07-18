@@ -64,7 +64,8 @@ jobs:
           command: |
             set -euo pipefail
             mkdir -p reports
-            vulture . > reports/vulture.txt || true
+            # No path arg: use [tool.vulture] paths=["app"] so .venv is skipped.
+            vulture > reports/vulture.txt || true
             grep -E "(unreachable|unsatisfiable)" reports/vulture.txt > reports/vulture-critical.txt || true
             if [ -s reports/vulture-critical.txt ]; then
               echo "Vulture found unreachable/unsatisfiable code:"
