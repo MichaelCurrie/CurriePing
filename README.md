@@ -67,6 +67,11 @@ Run these on your laptop (needs the AWS CLI, logged in). They create a `t4g.nano
    cd /opt/currieping
    cp .env.example .env
    docker compose up -d --build
+   cp scripts/auto-update.sh /usr/local/bin/currieping-auto-update
+   chmod +x /usr/local/bin/currieping-auto-update
+   echo '*/15 * * * * root /usr/local/bin/currieping-auto-update' \
+     > /etc/cron.d/currieping-auto-update
+   chmod 644 /etc/cron.d/currieping-auto-update
    EOF
    ```
 4. Launch the instance:
@@ -90,12 +95,26 @@ Run these on your laptop (needs the AWS CLI, logged in). They create a `t4g.nano
    sudo nano .env      # set STATUS_DOMAIN=status.example.com and TARGETS
    sudo docker compose up -d      # Caddy fetches the HTTPS cert
    ```
+7. Install the auto-update cron (pulls `main` when GitHub moves, rebuilds only then):
+   ```bash
+   sudo cp /opt/currieping/scripts/auto-update.sh /usr/local/bin/currieping-auto-update
+   sudo chmod +x /usr/local/bin/currieping-auto-update
+   echo '*/15 * * * * root /usr/local/bin/currieping-auto-update' \
+     | sudo tee /etc/cron.d/currieping-auto-update
+   sudo chmod 644 /etc/cron.d/currieping-auto-update
+   ```
+   If the clone lives somewhere else (e.g. `/opt/curieping`), set that path in the cron line:
+   `*/15 * * * * root CURRIEPING_DIR=/opt/curieping /usr/local/bin/currieping-auto-update`
 
 ## Updating
 
+Manual:
+
 ```bash
-cd /opt/currieping && git pull && sudo docker compose up -d --build
+cd /opt/currieping && sudo git pull && sudo docker compose up -d --build
 ```
+
+Or rely on the cron from deploy step 7 — every 15 minutes it `git fetch`es, and only if `origin/main` advanced does it `git reset --hard origin/main` and `docker compose up -d --build`. The deploy host tracks GitHub exactly; untracked files (`.env`) are kept. No-op runs are silent; real updates append to `/var/log/currieping-auto-update.log`.
 
 History persists across restarts in the `status-data` Docker volume.
 
