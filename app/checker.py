@@ -14,13 +14,13 @@ from concurrent.futures import ThreadPoolExecutor
 
 import requests
 
-from . import config, store
+from . import alerts, config, store
 
 _started = False
 _lock = threading.Lock()
 
 
-def check_one(target: config.Target) -> None:
+def check_one(target: config.Target) -> dict:
     start = time.monotonic()
     status_code: int | None = None
     error: str | None = None
@@ -45,7 +45,16 @@ def check_one(target: config.Target) -> None:
     except requests.exceptions.RequestException as exc:
         error = str(exc)[:300]
     latency_ms = round((time.monotonic() - start) * 1000, 1)
+    ts = int(time.time())
     store.record(target.name, ok, status_code, latency_ms, error)
+    return {
+        "target": target.name,
+        "url": target.url,
+        "ok": ok,
+        "status_code": status_code,
+        "error": error,
+        "ts": ts,
+    }
 
 
 def _run() -> None:
@@ -55,7 +64,11 @@ def _run() -> None:
         cycle_start = time.monotonic()
         if config.TARGETS:
             with ThreadPoolExecutor(max_workers=workers) as pool:
-                pool.map(check_one, config.TARGETS)
+                results = list(pool.map(check_one, config.TARGETS))
+            try:
+                alerts.process(results)
+            except Exception:
+                pass  # alerting must never kill the check loop
         try:
             store.prune(config.HISTORY_DAYS + 1)
         except Exception:

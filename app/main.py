@@ -34,9 +34,16 @@ def _overall(components: list[dict]) -> str:
 
 
 def _build_status() -> dict:
+    # Recent row uses the same bar count as the daily row so the two stacks align.
+    recent_count = config.HISTORY_DAYS
     components = []
     for target in config.TARGETS:
-        data = store.component(target.name, config.HISTORY_DAYS)
+        data = store.component(
+            target.name,
+            config.HISTORY_DAYS,
+            recent_count,
+            config.CHECK_INTERVAL_SECONDS,
+        )
         has_icon = store.has_favicon(target.name)
         icon = "/icon/" + quote(target.name, safe="") if has_icon else None
         components.append(

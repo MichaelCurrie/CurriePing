@@ -128,8 +128,48 @@ def _latest(target: str) -> dict | None:
     }
 
 
-def component(target: str, days: int) -> dict:
-    """Return daily buckets (oldest -> newest), uptime %, and latest result."""
+def _recent_pings(target: str, count: int) -> list[dict]:
+    """Newest `count` individual checks, returned oldest -> newest (left to right)."""
+    assert _conn is not None
+    rows = _conn.execute(
+        "SELECT ts, ok, status_code, latency_ms, error FROM checks "
+        "WHERE target = ? ORDER BY ts DESC LIMIT ?",
+        (target, count),
+    ).fetchall()
+    pings: list[dict] = []
+    for ts, ok, status_code, latency_ms, error in reversed(rows):
+        pings.append(
+            {
+                "ts": ts,
+                "ok": bool(ok),
+                "state": "up" if ok else "down",
+                "status_code": status_code,
+                "latency_ms": latency_ms,
+                "error": error,
+            }
+        )
+    # Pad on the left so the row always has `count` slots (matches daily bar count).
+    missing = count - len(pings)
+    if missing > 0:
+        empty = {
+            "ts": None,
+            "ok": None,
+            "state": "none",
+            "status_code": None,
+            "latency_ms": None,
+            "error": None,
+        }
+        pings = [dict(empty) for _ in range(missing)] + pings
+    return pings
+
+
+def component(target: str, days: int, recent_count: int, check_interval_seconds: int) -> dict:
+    """Return daily buckets, recent per-ping bars, uptime %, and latest result.
+
+    Daily row: one bar per UTC day over `days`.
+    Recent row: one bar per individual check, sized to `recent_count` slots so it
+    visually matches the daily row; the window label is derived from interval.
+    """
     assert _conn is not None
     with _lock:
         since = int(time.time()) - days * 86400
@@ -140,6 +180,7 @@ def component(target: str, days: int) -> dict:
             (target, since),
         ).fetchall()
         by_day = {d: (up, total) for d, up, total in rows}
+        recent = _recent_pings(target, recent_count)
         latest = _latest(target)
 
     today = datetime.now(timezone.utc).date()
@@ -170,6 +211,15 @@ def component(target: str, days: int) -> dict:
 
     uptime = round(100.0 * up_sum / total_sum, 3) if total_sum else None
 
+    recent_with_data = [p for p in recent if p["state"] != "none"]
+    recent_up = sum(1 for p in recent_with_data if p["ok"])
+    recent_total = len(recent_with_data)
+    recent_uptime = (
+        round(100.0 * recent_up / recent_total, 3) if recent_total else None
+    )
+    # Window length the recent row represents when full (interval × slot count).
+    recent_window_minutes = max(1, (recent_count * check_interval_seconds + 59) // 60)
+
     if latest is None:
         status = "unknown"
     else:
@@ -178,6 +228,9 @@ def component(target: str, days: int) -> dict:
     return {
         "status": status,
         "uptime": uptime,
+        "recent_uptime": recent_uptime,
+        "recent_window_minutes": recent_window_minutes,
         "latest": latest,
         "buckets": buckets,
+        "recent": recent,
     }

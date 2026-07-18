@@ -60,3 +60,20 @@ USER_AGENT = os.environ.get(
 ).strip()
 
 TARGETS = _parse_targets(os.environ.get("TARGETS", ""))
+
+# Alerting via ntfy.sh: when a target goes down (or recovers), POST a
+# notification to NTFY_URL (a full topic URL, e.g. https://ntfy.sh/my-topic).
+# Subscribe to that topic in the ntfy phone app. The topic name IS the secret,
+# so pick an unguessable one. Empty NTFY_URL -> alerting disabled. A target
+# must fail ALERT_FAIL_THRESHOLD consecutive checks before a "down" alert fires
+# (debounces blips); recovery fires on the first success after a down alert.
+NTFY_URL = os.environ.get("NTFY_URL", "").strip()
+ALERT_FAIL_THRESHOLD = max(1, _int("ALERT_FAIL_THRESHOLD", 2))
+
+# Deep link put on the notification (tapping it opens the status page).
+STATUS_PAGE_URL = (
+    f"https://{STATUS_DOMAIN}"
+    if (STATUS_DOMAIN := os.environ.get("STATUS_DOMAIN", "").strip())
+    and not STATUS_DOMAIN.startswith(":")
+    else ""
+)

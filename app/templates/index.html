@@ -41,18 +41,6 @@
   header.page h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; }
   header.page .sub { color: var(--muted); font-size: 13px; }
 
-  .banner {
-    display: flex; align-items: center; gap: 12px;
-    padding: 18px 22px; border-radius: var(--radius);
-    color: #fff; font-weight: 600; font-size: 17px;
-    margin-bottom: 16px;
-  }
-  .banner .dot { width: 12px; height: 12px; border-radius: 50%; background: rgba(255,255,255,.9); }
-  .banner.operational { background: var(--up); }
-  .banner.degraded    { background: var(--partial); }
-  .banner.down        { background: var(--down); }
-  .banner.unknown     { background: var(--muted); }
-
   /* Present-moment strip: one block per service, current status only. */
   .now-strip {
     background: var(--card);
@@ -62,8 +50,7 @@
     margin-bottom: 28px;
   }
   .now-strip .label {
-    color: var(--muted); font-size: 11px; font-weight: 500;
-    letter-spacing: 0.02em; text-transform: uppercase;
+    color: var(--muted); font-size: 12px; font-weight: 500;
     margin-bottom: 10px;
   }
   .now-blocks {
@@ -71,12 +58,21 @@
   }
   .now-block {
     flex: 1 1 48px; min-width: 36px; max-width: 80px;
-    height: 28px; border-radius: 3px;
+    height: 32px; border-radius: 3px;
     background: var(--none);
+    display: flex; align-items: center; justify-content: center;
+    position: relative; cursor: default;
   }
   .now-block.up { background: var(--up); }
   .now-block.down { background: var(--down); }
   .now-block.unknown { background: var(--none); }
+  .now-block .favicon {
+    width: 16px; height: 16px; border-radius: 2px;
+    object-fit: contain;
+    /* Slight plate so dark icons stay readable on green/red fills. */
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.92);
+  }
 
   .component {
     background: var(--card);
@@ -102,15 +98,52 @@
   .state.unknown     { color: var(--muted); }
 
   .bars { display: flex; gap: 2px; align-items: stretch; height: 34px; }
-  .bar { flex: 1 1 0; border-radius: 2px; background: var(--none); min-width: 2px; }
+  .bars.recent { height: 22px; margin-top: 10px; }
+  .bar {
+    flex: 1 1 0; border-radius: 2px; background: var(--none); min-width: 2px;
+    position: relative; cursor: default;
+  }
   .bar.up { background: var(--up); }
   .bar.partial { background: var(--partial); }
   .bar.down { background: var(--down); }
 
+  /* Hover tooltip: immediate, anchored above the bar / now-block. */
+  .bar[data-tip]::after,
+  .now-block[data-tip]::after {
+    content: attr(data-tip);
+    position: absolute;
+    left: 50%; bottom: calc(100% + 8px);
+    transform: translateX(-50%);
+    background: #111827; color: #f9fafb;
+    font-size: 11px; font-weight: 500; line-height: 1.35;
+    white-space: nowrap; padding: 6px 8px; border-radius: 6px;
+    pointer-events: none; opacity: 0; z-index: 5;
+    box-shadow: 0 4px 14px rgba(0,0,0,.25);
+  }
+  .bar[data-tip]::before,
+  .now-block[data-tip]::before {
+    content: "";
+    position: absolute;
+    left: 50%; bottom: calc(100% + 2px);
+    transform: translateX(-50%);
+    border: 6px solid transparent; border-top-color: #111827;
+    pointer-events: none; opacity: 0; z-index: 5;
+  }
+  .bar[data-tip]:hover::after,
+  .bar[data-tip]:hover::before,
+  .now-block[data-tip]:hover::after,
+  .now-block[data-tip]:hover::before { opacity: 1; }
+  @media (prefers-color-scheme: dark) {
+    .bar[data-tip]::after,
+    .now-block[data-tip]::after { background: #0b0d10; color: #e7eaee; }
+    .bar[data-tip]::before,
+    .now-block[data-tip]::before { border-top-color: #0b0d10; }
+  }
+
   /* "90 days ago ——— 99.4% uptime ——— Today" */
   .axis {
     display: flex; align-items: center; gap: 10px;
-    color: var(--muted); font-size: 11px; margin-top: 10px;
+    color: var(--muted); font-size: 11px; margin-top: 8px;
   }
   .axis .end { flex: 0 0 auto; white-space: nowrap; }
   .axis .rule {
@@ -122,11 +155,21 @@
     flex: 0 0 auto; white-space: nowrap;
     font-size: 12px; color: var(--muted);
   }
+  .summaries {
+    display: flex; flex-wrap: wrap; gap: 8px 18px;
+    color: var(--muted); font-size: 12px; margin-top: 12px;
+  }
+  .summaries strong { color: var(--text); font-weight: 600; }
 
   footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 26px; }
   footer .powered { display: inline-block; margin-top: 8px; color: var(--muted); text-decoration: none; }
   footer .powered:hover { text-decoration: underline; }
-  .tip { position: relative; cursor: default; }
+  /* Timezone abbr → Wikidata: visible but quieter than default link blue. */
+  a.tz-link {
+    color: var(--muted);
+    text-decoration: underline;
+  }
+  a.tz-link:hover { color: var(--text); }
 </style>
 </head>
 <body>
@@ -136,13 +179,8 @@
       <div class="sub" id="updated">Loading…</div>
     </header>
 
-    <div class="banner unknown" id="banner">
-      <span class="dot"></span>
-      <span id="banner-text">Loading status…</span>
-    </div>
-
     <div class="now-strip" id="now-strip" hidden>
-      <div class="label">Right now</div>
+      <div class="label" id="now-label"></div>
       <div class="now-blocks" id="now-blocks"></div>
     </div>
 
@@ -158,12 +196,6 @@
 <script>
 const HISTORY_DAYS = {{ history_days }};
 
-const BANNER_TEXT = {
-  operational: "All Systems Operational",
-  degraded: "Partial Service Degradation",
-  down: "Major Service Outage",
-  unknown: "Awaiting First Checks",
-};
 const STATE_TEXT = {
   operational: "Operational",
   down: "Down",
@@ -171,18 +203,47 @@ const STATE_TEXT = {
   unknown: "No data yet",
 };
 
-function barTitle(b) {
+function escapeAttr(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;");
+}
+
+function dayTip(b) {
   if (b.state === "none") return `${b.date}: no data`;
   const pct = (b.ratio * 100).toFixed(b.ratio === 1 ? 0 : 1);
   return `${b.date}: ${pct}% up (${b.up}/${b.total} checks)`;
 }
 
-function formatUptime(pct) {
-  if (pct === null || pct === undefined) return null;
-  // Match status-page style: whole numbers stay whole, else one decimal.
+function pingTip(p) {
+  if (p.state === "none" || p.ts == null) return "No ping yet";
+  const d = new Date(p.ts * 1000);
+  const stamp = new Intl.DateTimeFormat(undefined, {
+    year: "numeric", month: "short", day: "numeric",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+  }).format(d);
+  if (p.ok) {
+    const ms = p.latency_ms != null ? ` · ${Math.round(p.latency_ms)}ms` : "";
+    const code = p.status_code != null ? ` HTTP ${p.status_code}` : "";
+    return `${stamp}: up${code}${ms}`;
+  }
+  const why = p.error || (p.status_code != null ? `HTTP ${p.status_code}` : "down");
+  return `${stamp}: down · ${why}`;
+}
+
+function formatUptimeLabel(pct) {
+  if (pct === null || pct === undefined) return "—";
   const n = Number(pct);
   const text = Number.isInteger(n) ? String(n) : n.toFixed(1);
-  return `${text}% uptime`;
+  return `${text}%`;
+}
+
+function formatWindowLabel(minutes) {
+  if (minutes < 60) return `${minutes} min`;
+  const hours = minutes / 60;
+  if (Number.isInteger(hours)) return `${hours}h`;
+  return `${hours.toFixed(1)}h`;
 }
 
 function nowBlockClass(status) {
@@ -191,20 +252,49 @@ function nowBlockClass(status) {
   return "unknown";
 }
 
+/** Newest check timestamp across all services (unix seconds), or null. */
+function lastPingTs(components) {
+  let max = null;
+  for (const c of components) {
+    const ts = c.latest && c.latest.ts;
+    if (ts != null && (max === null || ts > max)) max = ts;
+  }
+  return max;
+}
+
 function renderNowStrip(components) {
   const strip = document.getElementById("now-strip");
   const row = document.getElementById("now-blocks");
+  const label = document.getElementById("now-label");
   if (!components.length) {
     strip.hidden = true;
     row.innerHTML = "";
+    label.innerHTML = "";
     return;
   }
   strip.hidden = false;
+  const pingTs = lastPingTs(components);
+  label.innerHTML = pingTs != null
+    ? formatUpdated(new Date(pingTs * 1000))
+    : "Awaiting first checks";
   row.innerHTML = components.map(c => {
     const cls = nowBlockClass(c.status);
-    const label = STATE_TEXT[c.status] || c.status;
-    return `<div class="now-block ${cls}" title="${c.name}: ${label}"></div>`;
+    const state = STATE_TEXT[c.status] || c.status;
+    const tip = escapeAttr(`${c.name}: ${state}`);
+    const icon = c.icon
+      ? `<img class="favicon" src="${c.icon}" alt="" loading="lazy" onerror="this.remove()">`
+      : "";
+    return `<div class="now-block ${cls}" data-tip="${tip}">${icon}</div>`;
   }).join("");
+}
+
+function renderAxis(left, right) {
+  return `
+    <div class="axis">
+      <span class="end">${left}</span>
+      <hr class="rule">
+      <span class="end">${right}</span>
+    </div>`;
 }
 
 function renderComponent(c) {
@@ -212,29 +302,34 @@ function renderComponent(c) {
   el.className = "component";
 
   const stateText = STATE_TEXT[c.status] || c.status;
-  const uptimeText = formatUptime(c.uptime);
   const icon = c.icon
     ? `<img class="favicon" src="${c.icon}" alt="" loading="lazy" onerror="this.remove()">`
     : "";
 
-  const bars = c.buckets.map(b =>
-    `<div class="bar ${b.state === 'none' ? '' : b.state}" title="${barTitle(b)}"></div>`
+  const dayBars = (c.buckets || []).map(b =>
+    `<div class="bar ${b.state === "none" ? "" : b.state}" data-tip="${escapeAttr(dayTip(b))}"></div>`
   ).join("");
 
-  const axisMid = uptimeText
-    ? `<hr class="rule"><span class="uptime" title="uptime over window with data">${uptimeText}</span><hr class="rule">`
-    : `<hr class="rule">`;
+  const recentBars = (c.recent || []).map(p =>
+    `<div class="bar ${p.state === "none" ? "" : p.state}" data-tip="${escapeAttr(pingTip(p))}"></div>`
+  ).join("");
+
+  const windowLabel = formatWindowLabel(c.recent_window_minutes || HISTORY_DAYS);
+  const dayUptime = formatUptimeLabel(c.uptime);
+  const recentUptime = formatUptimeLabel(c.recent_uptime);
 
   el.innerHTML = `
     <div class="top">
       <a class="name" href="${c.url}" target="_blank" rel="noopener">${icon}${c.name}</a>
       <span class="state ${c.status}">${stateText}</span>
     </div>
-    <div class="bars">${bars}</div>
-    <div class="axis">
-      <span class="end">${HISTORY_DAYS} days ago</span>
-      ${axisMid}
-      <span class="end">Today</span>
+    <div class="bars">${dayBars}</div>
+    ${renderAxis(`${HISTORY_DAYS} days ago`, "Today")}
+    <div class="bars recent">${recentBars}</div>
+    ${renderAxis(`${windowLabel} ago`, "Now")}
+    <div class="summaries">
+      <span><strong>${dayUptime}</strong> uptime · ${HISTORY_DAYS} days</span>
+      <span><strong>${recentUptime}</strong> uptime · past ${windowLabel}</span>
     </div>`;
   return el;
 }
@@ -258,7 +353,7 @@ function formatUpdated(d) {
     ? "https://www.wikidata.org/wiki/" + TZ_WIKIDATA[tz]
     : "https://www.wikidata.org/w/index.php?search=" + encodeURIComponent(tz);
   const tzLink = tz
-    ? ` <a href="${href}" target="_blank" rel="noopener">${tz}</a>`
+    ? ` <a class="tz-link" href="${href}" target="_blank" rel="noopener">${tz}</a>`
     : "";
   return time + tzLink;
 }
@@ -267,11 +362,6 @@ async function refresh() {
   try {
     const res = await fetch("/api/status", { cache: "no-store" });
     const data = await res.json();
-
-    const banner = document.getElementById("banner");
-    banner.className = "banner " + data.overall;
-    document.getElementById("banner-text").textContent =
-      BANNER_TEXT[data.overall] || data.overall;
 
     renderNowStrip(data.components);
 
@@ -286,7 +376,7 @@ async function refresh() {
     lastUpdate = Date.now();
     document.getElementById("ago").innerHTML = formatUpdated(d);
   } catch (e) {
-    document.getElementById("banner-text").textContent = "Unable to load status";
+    document.getElementById("updated").textContent = "Unable to load status";
   }
 }
 
