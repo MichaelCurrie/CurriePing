@@ -1,12 +1,10 @@
-### Deploy to AWS EC2 (IPv6-only)
+### Deploy to AWS EC2
 
-These commands launch a `t4g.nano` with a **public IPv6 only** (no public IPv4 / Elastic IP). That avoids AWS’s public IPv4 charge (~$3.65/month — often more than the instance). DNS for the status page is an **AAAA** record only.
-
-**Trade-offs:** IPv4-only clients cannot open the status page. Outbound probes only succeed for dual-stack / IPv6 targets (Google, Microsoft, and most major sites are fine). Do **not** add a NAT Gateway for IPv4 compatibility — it costs far more than the IPv4 address fee.
+These commands launches a `t4g.nano` and installs CurriePing.
 
 Afterwards, the box refreshes to the latest CurriePing from git every 15 minutes.
 
-1. Install the `aws` CLI and get API credentials. You also need somewhere to publish an **AAAA** for `STATUS_DOMAIN` (OpenSRS, Route53, Cloudflare DNS, etc.).
+1. Install the `aws` CLI and get API credentials. You also need somewhere to publish an **AAAA** for `STATUS_DOMAIN` (OpenSRS, Route53, Cloudflare DNS, etc.).*
 
 2. Run this on your local machine (ask any LLM to translate to PowerShell if needed):
 
@@ -89,8 +87,12 @@ aws ec2 revoke-security-group-egress --region $REGION --group-id "$SG" \
 cat > user-data.sh <<EOF
 #!/bin/bash
 set -eux
+export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y docker.io docker-compose-v2 git
+apt-get -y upgrade
+apt-get install -y docker.io docker-compose-v2 git unattended-upgrades
+# Security updates continue to apply automatically after first boot.
+dpkg-reconfigure -f noninteractive unattended-upgrades || true
 mkdir -p /etc/docker
 cat > /etc/docker/daemon.json <<'DOCKER'
 {
@@ -150,7 +152,33 @@ echo "Point AAAA for $STATUS_DOMAIN at that address (and delete any A record)."
    curl -6 -I "https://$STATUS_DOMAIN"
    ```
 
-   SSH: `ssh -6 ubuntu@$IPV6`
+   SSH over IPv6 (needs a working IPv6 path on your laptop):
+
+   ```bash
+   ssh -6 -i /path/to/key.pem ubuntu@$IPV6
+   ```
+
+   If your laptop is IPv4-only, jump through any other host in the same VPC that still has a public IPv4:
+
+   ```bash
+   ssh -i /path/to/key.pem \
+     -o "ProxyCommand=ssh -i /path/to/key.pem -W %h:%p ubuntu@JUMP_PUBLIC_IPV4" \
+     ubuntu@CURRIEPING_PRIVATE_IPV4
+   ```
+
+### On the Ubuntu host after login
+
+Install path is `/opt/currieping` for new deploys. Older boxes may use the typo path `/opt/curieping` — check with `ls /opt`.
+
+```bash
+# Apply pending OS updates (also done in user-data on first boot for new installs)
+sudo apt-get update
+sudo DEBIAN_FRONTEND=noninteractive apt-get -y upgrade
+
+cd /opt/currieping   # or: cd /opt/curieping
+sudo docker compose ps
+sudo docker compose logs -f --tail=100
+```
 
 ### Migrating an existing IPv4 / Elastic IP box
 
@@ -160,8 +188,18 @@ echo "Point AAAA for $STATUS_DOMAIN at that address (and delete any A record)."
 4. On the instance, enable Docker IPv6 and recreate the stack:
 
    ```bash
-   sudo bash /opt/currieping/scripts/enable-docker-ipv6.sh
-   cd /opt/currieping && sudo docker compose up -d --build --remove-orphans
+   sudo apt-get update
+   sudo DEBIAN_FRONTEND=noninteractive apt-get -y upgrade
+   APP_DIR=/opt/currieping
+   [ -d /opt/curieping ] && APP_DIR=/opt/curieping
+   sudo bash "$APP_DIR/scripts/enable-docker-ipv6.sh"
+   cd "$APP_DIR" && sudo docker compose up -d --build --remove-orphans
    ```
 
 5. Disassociate and release the Elastic IP. Turn **Map public IP** off on the subnet first. A stop/start *should* drop auto-assigned public IPv4; if AWS still attaches one, relaunch from an AMI with `AssociatePublicIpAddress=false` and `Ipv6AddressCount=1`, then terminate the old instance (that is what actually ends the IPv4 charge).
+
+-----
+
+* NOTE: These setup steps use a **public IPv6 only** (no public IPv4 / Elastic IP) to avoid AWS’s public IPv4 charge (~$3.65/month — often more than the instance). DNS for the status page is an **AAAA** record only.
+
+**Trade-offs:** IPv4-only clients cannot open the status page. Outbound probes only succeed for dual-stack / IPv6 targets (Google, Microsoft, and most major sites are fine). Do **not** add a NAT Gateway for IPv4 compatibility — it costs far more than the IPv4 address fee.
