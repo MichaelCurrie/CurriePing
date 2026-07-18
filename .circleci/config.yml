@@ -12,9 +12,17 @@ jobs:
     steps:
       - checkout
 
+      # ty only auto-discovers VIRTUAL_ENV / .venv (not a bare pip --user /
+      # system install). Put deps in a project venv and keep it on PATH for
+      # every later step via CircleCI's BASH_ENV.
       - run:
           name: Install Python dependencies and linting tools
           command: |
+            set -euo pipefail
+            python -m venv .venv
+            echo 'export PATH="'"$PWD"'/.venv/bin:$PATH"' >> "$BASH_ENV"
+            # shellcheck source=/dev/null
+            . .venv/bin/activate
             python -m pip install --upgrade pip
             pip install -r requirements-dev.txt
 
@@ -48,7 +56,8 @@ jobs:
 
       - run:
           name: ty
-          command: ty check .
+          # Explicit --python so resolution does not depend on shell activation.
+          command: ty check --python .venv .
 
       - run:
           name: Vulture (fail on unreachable/unsatisfiable)
