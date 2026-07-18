@@ -23,25 +23,23 @@ https://status.michaelcurrie.com
 
 Paste into an LLM agent (Claude Code, etc.):
 
-```text
-You are an agent that will help me deploy a status webpage. Follow these steps, prompting me as required.
-
-1. Confirm the `aws` CLI and `cloudflared` are installed and that API credentials are loaded for both. If either tool is missing or not authenticated, stop and tell me how to install/configure it.
-
-2. Tell me to install the ntfy.sh app on my phone
-
-3. Ask me to pick a long random topic string for status updates and subscribe to it in the app on my phone so the server can POST alerts there. (e.g. https://ntfy.sh/status-rforjgeorij234)
-
-4. Ask me for these .env values (examples provided):
-``` 
-STATUS_DOMAIN=status.example.com
-STATUS_TITLE=My Service Status Webpage
-TARGETS=microsoft=https://www.microsoft.com,google=https://www.google.com
-NTFY_URL=https://ntfy.sh/status-rforjgeorij234
-```
-
-5. Read the https://github.com/MichaelCurrie/CurriePing README follow all instructions
-```
+> You are an agent that will help me deploy a status webpage. Follow these steps, prompting me as required.
+> 
+> 1. Confirm the `aws` CLI and `cloudflared` are installed and that API credentials are loaded for both. If either tool is missing or not authenticated, stop and tell me how to install/configure it.
+> 
+> 2. Tell me to install the ntfy.sh app on my phone
+> 
+> 3. Ask me to pick a long random topic string for status updates and subscribe to it in the app on my phone so the server can POST alerts there. (e.g. https://ntfy.sh/status-rforjgeorij234)
+> 
+> 4. Ask me for these .env values (examples provided):
+> ``` 
+> STATUS_DOMAIN=status.example.com
+> STATUS_TITLE=My Service Status Webpage
+> TARGETS=microsoft=https://www.microsoft.com,google=https://www.google.com
+> NTFY_URL=https://ntfy.sh/status-rforjgeorij234
+> ```
+> 
+> 5. Read the https://github.com/MichaelCurrie/CurriePing README follow all instructions
 
 ## How to Deploy - Manually
 
