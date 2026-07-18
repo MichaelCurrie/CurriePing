@@ -14,6 +14,10 @@
 #          forwards HTTP to app:8080. When STATUS_DOMAIN is blank it serves
 #          plain HTTP on :80 for local testing.
 #
+# IPv6: the default network is dual-stack so the compose network itself can
+# carry v6. Host publish of :80/:443 on IPv6 still requires the Docker daemon
+# ipv6/ip6tables settings (see scripts/enable-docker-ipv6.sh / INSTALL.md).
+#
 # Local / host usage:
 #   cp .env.example .env   # edit TARGETS (+ STATUS_DOMAIN for HTTPS)
 #   docker compose up -d --build --remove-orphans
@@ -52,6 +56,14 @@ services:
       - caddy-config:/config
     depends_on:
       - app
+
+networks:
+  default:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+        - subnet: fd00:dead:beef:2::/64
 
 volumes:
   status-data:

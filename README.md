@@ -21,7 +21,7 @@ https://status.michaelcurrie.com
 | [Pingdom](https://www.pingdom.com/pricing/) | **$15** | 10 | — |
 | [UptimeRobot](https://uptimerobot.com/pricing/) | **$9** | 50 | — |
 | [Uptime Kuma](https://github.com/louislam/uptime-kuma) | **$0** | unlimited | ~1 GB RAM → `t4g.micro` ~ **$6** |
-| **CurriePing** | **$0** | **unlimited** | 0.5 GB RAM → `t4g.nano` ~ **$3** |
+| **CurriePing** | **$0** | **unlimited** | 0.5 GB RAM → `t4g.nano` ~ **$3** (IPv6-only; skip the ~$3.65 public IPv4 fee) |
 
 ## How to Deploy - via one-shot LLM prompt
 
@@ -43,7 +43,7 @@ Paste into an LLM agent (Claude Code, etc.):
 > 
 > 4. Confirm the `aws` CLI is installed and authenticated. If not, stop and help me install it.
 > 
-> 5. Ask whether DNS for `STATUS_DOMAIN` is on Cloudflare or Route53. If DNS is on Cloudflare, also confirm `cloudflared` is installed and authenticated.
+> 5. Ask where DNS for `STATUS_DOMAIN` is hosted (OpenSRS, Route53, Cloudflare DNS, etc.). The deploy is **IPv6-only**: they will create an **AAAA** record (and should remove any **A** record). Confirm their network can use IPv6 for SSH and for viewing the status page.
 > 
 > 6. Follow [INSTALL.md](https://github.com/MichaelCurrie/CurriePing/blob/main/INSTALL.md) to deploy.
 
@@ -58,7 +58,7 @@ Everything runs in Docker Compose — two containers on a private network:
 | `app` | Python CurriePing process (probes sites, SQLite history, status page on `:8080` inside the network) |
 | `proxy` | [Caddy](https://caddyserver.com) — public `:80`/`:443`, TLS via Let's Encrypt, reverse-proxies to `app` |
 
-For manual deploy instructions, see [INSTALL.md](INSTALL.md)
+Production AWS install is **IPv6-only** (AAAA DNS, no Elastic/public IPv4) so the address fee does not dwarf the `t4g.nano`. See [INSTALL.md](INSTALL.md).
 
 ## License
 
