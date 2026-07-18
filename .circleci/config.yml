@@ -22,8 +22,6 @@ jobs:
           name: Verify Ruff version parity
           command: |
             set -euo pipefail
-            # Avoid bash heredoc (`<<`): CircleCI config v2.1 treats `<<` as
-            # its own tag syntax and requires `\<<` escaping.
             expected="$(grep -E '^ruff==' requirements-dev.txt | head -n1 | cut -d= -f3)"
             if [ -z "$expected" ]; then
               echo "requirements-dev.txt must pin ruff==<version>"
