@@ -1,6 +1,6 @@
 # CurriePing
 
-A tiny self-hosted uptime monitor with a status page in the style of [Atlassian Statuspage](https://status.claude.com). It **pings the sites itself** on an interval and stores results in SQLite.
+A tiny self-hosted uptime monitor with a status page in the style of [Atlassian Statuspage](https://status.claude.com). It **pings the sites itself** on an interval and stores results in SQLite. Alerts to your phone/email via [https://ntfy.sh/](ntfy.sh). 
 
 ## Example
 
