@@ -9,12 +9,25 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
 class Target:
     name: str
     url: str
+
+
+def _read_version() -> str:
+    """Semantic version from the repo-root VERSION file (copied into the image)."""
+    path = Path(__file__).resolve().parent.parent / "VERSION"
+    try:
+        return path.read_text(encoding="utf-8").strip() or "0.0.0"
+    except OSError:
+        return "0.0.0"
+
+
+VERSION = _read_version()
 
 
 def _parse_targets(raw: str) -> list[Target]:

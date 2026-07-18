@@ -1,4 +1,5 @@
 # Multi-arch base (runs on ARM64 t4g instances and x86 alike).
+# Build from repo root: docker compose builds with context `.` and this file.
 FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \
@@ -7,9 +8,10 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /srv
 
-COPY requirements.txt .
+COPY app/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+COPY VERSION .
 COPY app ./app
 
 # Persisted SQLite history lives here (mounted as a volume in compose).

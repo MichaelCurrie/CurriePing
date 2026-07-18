@@ -44,5 +44,5 @@ fi
 
 log "updating $APP_DIR $LOCAL -> $REMOTE"
 git reset --hard "origin/$BRANCH"
-docker compose up -d --build
+docker compose up -d --build --remove-orphans
 log "update complete ($(git rev-parse --short HEAD))"

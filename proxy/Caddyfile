@@ -1,7 +1,9 @@
 # STATUS_DOMAIN is provided by docker-compose, defaulting to ":80" when unset
 # (plain HTTP, viewable at the server IP). When set to a hostname, Caddy binds
 # it and auto-obtains a Let's Encrypt certificate.
+#
+# Upstream is the `app` service on the compose network (see docker-compose.yml).
 {$STATUS_DOMAIN} {
 	encode gzip
-	reverse_proxy status:8080
+	reverse_proxy app:8080
 }

@@ -61,6 +61,7 @@ def _build_status() -> dict:
         )
     return {
         "title": config.TITLE,
+        "version": config.VERSION,
         "generated_at": int(time.time()),
         "history_days": config.HISTORY_DAYS,
         "check_interval_seconds": config.CHECK_INTERVAL_SECONDS,
@@ -75,6 +76,7 @@ def index():
         "index.html",
         title=config.TITLE,
         history_days=config.HISTORY_DAYS,
+        version=config.VERSION,
     )
 
 
@@ -102,4 +104,6 @@ def icon(name):
 
 @app.route("/healthz")
 def healthz():
-    return jsonify({"ok": True, "targets": len(config.TARGETS)})
+    return jsonify(
+        {"ok": True, "version": config.VERSION, "targets": len(config.TARGETS)}
+    )
