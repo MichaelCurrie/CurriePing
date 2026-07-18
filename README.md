@@ -20,8 +20,10 @@ https://status.michaelcurrie.com
 | [StatusCake](https://www.statuscake.com/pricing/) | **~$20** | 100 | — |
 | [Pingdom](https://www.pingdom.com/pricing/) | **$15** | 10 | — |
 | [UptimeRobot](https://uptimerobot.com/pricing/) | **$9** | 50 | — |
-| [Uptime Kuma](https://github.com/louislam/uptime-kuma) | **$0** | unlimited | ~1 GB RAM → `t4g.micro` ~ **$6** |
-| **CurriePing** | **$0** | **unlimited** | 0.5 GB RAM → `t4g.nano` ~ **$3** (IPv6-only; skip the ~$3.65 public IPv4 fee) |
+| [Uptime Kuma](https://github.com/louislam/uptime-kuma) | **$0** | unlimited | ~1 GB RAM → `t4g.micro` ~ **$6*** |
+| **CurriePing** | **$0** | **unlimited** | 0.5 GB RAM → `t4g.nano` ~ **$3*** |
+
+* IPv6-only; skip the ~$3.65 AWS public IPv4 fee
 
 ## How to Deploy - via one-shot LLM prompt
 
