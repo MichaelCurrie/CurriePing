@@ -67,11 +67,9 @@
   .now-block.down { background: var(--down); }
   .now-block.unknown { background: var(--none); }
   .now-block .favicon {
-    width: 16px; height: 16px; border-radius: 2px;
+    width: 16px; height: 16px;
     object-fit: contain;
-    /* Slight plate so dark icons stay readable on green/red fills. */
-    background: rgba(255, 255, 255, 0.92);
-    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.92);
+    /* Keep alpha: the status fill should show through transparent favicons. */
   }
 
   .component {

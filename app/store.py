@@ -90,24 +90,33 @@ def save_favicon(target: str, data: bytes, content_type: str) -> None:
         _conn.commit()
 
 
-def get_favicon(target: str) -> tuple[bytes, str] | None:
+def clear_favicons() -> None:
+    """Drop every cached favicon so the next refresh cannot serve stale bytes."""
+    assert _conn is not None
+    with _lock:
+        _conn.execute("DELETE FROM favicons")
+        _conn.commit()
+
+
+def get_favicon(target: str) -> tuple[bytes, str, int] | None:
     assert _conn is not None
     with _lock:
         row = _conn.execute(
-            "SELECT data, content_type FROM favicons WHERE target = ?", (target,)
+            "SELECT data, content_type, fetched_at FROM favicons WHERE target = ?",
+            (target,),
         ).fetchone()
     if row is None:
         return None
-    return bytes(row[0]), row[1]
+    return bytes(row[0]), row[1], int(row[2])
 
 
-def has_favicon(target: str) -> bool:
+def favicon_fetched_at(target: str) -> int | None:
     assert _conn is not None
     with _lock:
         row = _conn.execute(
-            "SELECT 1 FROM favicons WHERE target = ?", (target,)
+            "SELECT fetched_at FROM favicons WHERE target = ?", (target,)
         ).fetchone()
-    return row is not None
+    return int(row[0]) if row else None
 
 
 def _latest(target: str) -> dict | None:

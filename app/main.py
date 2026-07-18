@@ -44,8 +44,13 @@ def _build_status() -> dict:
             recent_count,
             config.CHECK_INTERVAL_SECONDS,
         )
-        has_icon = store.has_favicon(target.name)
-        icon = "/icon/" + quote(target.name, safe="") if has_icon else None
+        fetched_at = store.favicon_fetched_at(target.name)
+        # ?v= busts browser caches when the hourly sweep replaces the bytes.
+        icon = (
+            f"/icon/{quote(target.name, safe='')}?v={fetched_at}"
+            if fetched_at is not None
+            else None
+        )
         components.append(
             {
                 "name": target.name,
@@ -83,11 +88,15 @@ def icon(name):
     fav = store.get_favicon(name)
     if fav is None:
         abort(404)
-    data, content_type = fav
+    data, content_type, fetched_at = fav
     return Response(
         data,
         mimetype=content_type,
-        headers={"Cache-Control": "public, max-age=86400"},
+        headers={
+            # Align with the hourly favicon sweep; ?v=fetched_at also busts caches.
+            "Cache-Control": "public, max-age=3600",
+            "ETag": f'"{fetched_at}"',
+        },
     )
 
 

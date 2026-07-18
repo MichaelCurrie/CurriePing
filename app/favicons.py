@@ -2,7 +2,7 @@
 
 Each target's favicon is downloaded and stored in SQLite (bytes + content-type)
 so the status page can show it without hotlinking the origin on every render.
-A daemon thread refreshes them once a day.
+A daemon thread sweeps the cache and re-fetches hourly (and once at startup).
 
 Resolution order per site, first hit wins:
   1. <link rel="...icon..."> declared in the page HTML
@@ -21,7 +21,7 @@ import requests
 
 from . import config, store
 
-REFRESH_INTERVAL_SECONDS = 24 * 3600
+REFRESH_INTERVAL_SECONDS = 3600
 
 # Magic-byte signatures so we can accept favicons served with a wrong/missing
 # Content-Type (common for /favicon.ico).
@@ -114,6 +114,9 @@ def fetch_favicon(url: str) -> tuple[bytes, str] | None:
 
 
 def refresh_all() -> None:
+    # Wipe first so a previously cached bad icon cannot outlive a failed re-fetch
+    # for that target; the status page simply omits the img until the next success.
+    store.clear_favicons()
     for target in config.TARGETS:
         result = fetch_favicon(target.url)
         if result:

@@ -2,12 +2,12 @@
 
 A tiny self-hosted uptime monitor with a status page in the style of [status.claude.com](https://status.claude.com). It **pings the sites itself** on an interval and stores results in SQLite.
 
-| Tool | Monthly price | Max sites monitored | Monthly hosting cost |
+| Tool | Subscription cost / month | Max sites monitored | Hosting cost / month |
 |---|---|---|---|
-| [Pingdom](https://www.pingdom.com/pricing/) | **$15** | 10 | — |
-| [UptimeRobot](https://uptimerobot.com/pricing/) | **$9** | 50 | — |
 | [Better Stack](https://betterstack.com/pricing) | **$29** | 50 | — |
 | [StatusCake](https://www.statuscake.com/pricing/) | **~$20** | 100 | — |
+| [Pingdom](https://www.pingdom.com/pricing/) | **$15** | 10 | — |
+| [UptimeRobot](https://uptimerobot.com/pricing/) | **$9** | 50 | — |
 | [Uptime Kuma](https://github.com/louislam/uptime-kuma) | **$0** | unlimited | ~1 GB RAM → `t4g.micro` ~ **$6** |
 | **CurriePing** | **$0** | **unlimited** | 0.5 GB RAM → `t4g.nano` ~ **$3** |
 
