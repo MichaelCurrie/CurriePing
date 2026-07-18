@@ -22,17 +22,13 @@ jobs:
           name: Verify Ruff version parity
           command: |
             set -euo pipefail
-            expected="$(python - <<'PY'
-            from pathlib import Path
-
-            for line in Path("requirements-dev.txt").read_text().splitlines():
-                if line.startswith("ruff=="):
-                    print(line.split("==", 1)[1])
-                    break
-            else:
-                raise SystemExit("requirements-dev.txt must pin ruff==<version>")
-            PY
-            )"
+            # Avoid bash heredoc (`<<`): CircleCI config v2.1 treats `<<` as
+            # its own tag syntax and requires `\<<` escaping.
+            expected="$(grep -E '^ruff==' requirements-dev.txt | head -n1 | cut -d= -f3)"
+            if [ -z "$expected" ]; then
+              echo "requirements-dev.txt must pin ruff==<version>"
+              exit 1
+            fi
             actual="$(ruff --version | awk '{print $2}')"
             if [ "$actual" != "$expected" ]; then
               echo "Ruff version mismatch: requirements-dev.txt pins ${expected}, but CI installed ${actual}."
