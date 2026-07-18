@@ -2,6 +2,7 @@
 
 [![Version](https://img.shields.io/github/v/release/MichaelCurrie/CurriePing)](https://github.com/MichaelCurrie/CurriePing/releases/latest)
 [![CircleCI](https://img.shields.io/circleci/build/github/MichaelCurrie/CurriePing/main)](https://app.circleci.com/pipelines/github/MichaelCurrie/CurriePing)
+[![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](LICENSE)
 
 A tiny self-hosted uptime monitor in the style of [Atlassian Statuspage](https://status.claude.com). It **pings the sites itself** on an interval and stores results in SQLite. Alerts to your phone/email via [https://ntfy.sh/](ntfy.sh). 
 
@@ -28,13 +29,11 @@ Paste into an LLM agent (Claude Code, etc.):
 
 > You are an agent that will help me deploy a status webpage. Follow these steps, prompting me as required.
 > 
-> 1. Confirm the `aws` CLI and `cloudflared` are installed and that API credentials are loaded for both. If either tool is missing or not authenticated, stop and tell me how to install/configure it.
+> 1. Tell me to install the [ntfy.sh](https://ntfy.sh) app on my phone
 > 
-> 2. Tell me to install the ntfy.sh app on my phone
+> 2. Ask me to pick a long random topic string for status updates and subscribe to it in the app on my phone so the server can POST alerts there. (e.g. https://ntfy.sh/status-rforjgeorij234)
 > 
-> 3. Ask me to pick a long random topic string for status updates and subscribe to it in the app on my phone so the server can POST alerts there. (e.g. https://ntfy.sh/status-rforjgeorij234)
-> 
-> 4. Ask me for these .env values (examples provided):
+> 3. Ask me for these .env values (examples provided):
 > ``` 
 > STATUS_DOMAIN=status.example.com
 > STATUS_TITLE=My Service Status Webpage
@@ -42,7 +41,11 @@ Paste into an LLM agent (Claude Code, etc.):
 > NTFY_URL=https://ntfy.sh/status-rforjgeorij234
 > ```
 > 
-> 5. Read the https://github.com/MichaelCurrie/CurriePing README follow all instructions
+> 4. Confirm the `aws` CLI is installed and authenticated. If not, stop and help me install it.
+> 
+> 5. Ask whether DNS for `STATUS_DOMAIN` is on Cloudflare or Route53. If DNS is on Cloudflare, also confirm `cloudflared` is installed and authenticated.
+> 
+> 6. Follow [INSTALL.md](https://github.com/MichaelCurrie/CurriePing/blob/main/INSTALL.md) to deploy.
 
 ## How to Deploy - Manually
 
@@ -56,3 +59,7 @@ Everything runs in Docker Compose — two containers on a private network:
 | `proxy` | [Caddy](https://caddyserver.com) — public `:80`/`:443`, TLS via Let's Encrypt, reverse-proxies to `app` |
 
 For manual deploy instructions, see [INSTALL.md](INSTALL.md)
+
+## License
+
+[Unlicense](LICENSE) — public domain. Do anything with it.

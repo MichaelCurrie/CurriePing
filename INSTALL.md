@@ -4,7 +4,7 @@ These commands will launch a `t4g.nano` EC2 instance, install everything, and st
 
 Afterwards, the box refreshes to the latest version of CurriePing from the git repo every 15 minutes forever.
 
-1. Install `aws` CLI and `cloudflared` and get API credentials for both.
+1. Install the `aws` CLI and get API credentials. If the domain is on Cloudflare, also install `cloudflared` and get credentials for that. If the domain is already in Route53, you only need `aws`.
 
 2. Run this on your local machine (ask any LLM to translate to Powershell if needed):
 
@@ -55,14 +55,36 @@ EOF
 AMI=$(aws ssm get-parameter --region $REGION \
   --name /aws/service/canonical/ubuntu/server/24.04/stable/current/arm64/hvm/ebs-gp3/ami-id \
   --query 'Parameter.Value' --output text)
-aws ec2 run-instances --region $REGION \
+INSTANCE_ID=$(aws ec2 run-instances --region $REGION \
   --image-id $AMI --instance-type t4g.nano \
   --key-name $KEYPAIR --security-group-ids $SG \
   --user-data file://user-data.sh \
-  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=currieping}]'
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=currieping}]' \
+  --query 'Instances[0].InstanceId' --output text)
 
-# 5. Point DNS at STATUS_DOMAIN with cloudflared
-#    (Cloudflare proxy OFF — DNS only / grey cloud; Caddy needs a direct path for the cert)
+# 5. Point DNS at STATUS_DOMAIN (pick one)
+
+# Option A — Cloudflare (proxy OFF / grey cloud; Caddy needs a direct path for the cert)
 cloudflared tunnel route dns currieping "$STATUS_DOMAIN"
+
+# Option B — Route53 (domain already in a hosted zone)
+aws ec2 wait instance-running --region $REGION --instance-ids $INSTANCE_ID
+IP=$(aws ec2 describe-instances --region $REGION --instance-ids $INSTANCE_ID \
+  --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
+# Hosted zone name is the parent domain, e.g. example.com for status.example.com
+HOSTED_ZONE=example.com
+ZONE_ID=$(aws route53 list-hosted-zones-by-name --dns-name "$HOSTED_ZONE" \
+  --query 'HostedZones[0].Id' --output text | sed 's|/hostedzone/||')
+aws route53 change-resource-record-sets --hosted-zone-id "$ZONE_ID" --change-batch "{
+  \"Changes\": [{
+    \"Action\": \"UPSERT\",
+    \"ResourceRecordSet\": {
+      \"Name\": \"$STATUS_DOMAIN\",
+      \"Type\": \"A\",
+      \"TTL\": 60,
+      \"ResourceRecords\": [{\"Value\": \"$IP\"}]
+    }
+  }]
+}"
 ```
 
