@@ -1,0 +1,130 @@
+# Local mirrors of .circleci/config.yml lint steps. Install system tools from
+# requirements-dev.txt (same pins CI uses), then: pre-commit install
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-version
+        name: Ruff Version Parity
+        entry: python
+        args:
+          - -c
+          - |
+            from pathlib import Path
+            import subprocess
+            import sys
+
+            expected = None
+            for line in Path("requirements-dev.txt").read_text().splitlines():
+                if line.startswith("ruff=="):
+                    expected = line.split("==", 1)[1]
+                    break
+            if expected is None:
+                sys.exit("requirements-dev.txt must pin ruff==<version>")
+
+            actual = subprocess.check_output(["ruff", "--version"], text=True).split()[1]
+            if actual != expected:
+                sys.exit(
+                    "Ruff version mismatch: requirements-dev.txt pins "
+                    f"{expected}, but this environment has {actual}."
+                )
+            print(f"Ruff version parity verified: {actual}")
+        language: system
+        pass_filenames: false
+
+      - id: ruff-format
+        name: Ruff Format Check
+        entry: ruff format --check --force-exclude .
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: ruff-check
+        name: Ruff Lint
+        entry: ruff check --force-exclude .
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: mypy
+        name: Mypy (strict)
+        entry: python
+        args:
+          - -c
+          - |
+            import os
+            import subprocess
+            import sys
+
+            repo_root = subprocess.check_output(
+                ["git", "rev-parse", "--show-toplevel"], text=True
+            ).strip()
+            os.chdir(repo_root)
+            sys.exit(subprocess.run(["mypy", "--strict", "."]).returncode)
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: ty
+        name: ty
+        entry: python
+        args:
+          - -c
+          - |
+            import os
+            import subprocess
+            import sys
+
+            repo_root = subprocess.check_output(
+                ["git", "rev-parse", "--show-toplevel"], text=True
+            ).strip()
+            os.chdir(repo_root)
+            # CI uses --python .venv; locally use the active interpreter so
+            # resolution does not depend on a project .venv existing.
+            sys.exit(
+                subprocess.run(
+                    ["ty", "check", "--python", sys.executable, "."]
+                ).returncode
+            )
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: vulture
+        name: Vulture (unreachable/unsatisfiable)
+        entry: python
+        args:
+          - -c
+          - |
+            import os
+            import re
+            import subprocess
+            import sys
+            from pathlib import Path
+
+            repo_root = subprocess.check_output(
+                ["git", "rev-parse", "--show-toplevel"], text=True
+            ).strip()
+            os.chdir(repo_root)
+            reports = Path("reports")
+            reports.mkdir(exist_ok=True)
+            # No path arg: use [tool.vulture] paths=["app"] so .venv is skipped.
+            result = subprocess.run(
+                ["vulture"], capture_output=True, text=True
+            )
+            output = result.stdout + result.stderr
+            (reports / "vulture.txt").write_text(output, encoding="utf-8")
+            critical = [
+                line
+                for line in output.splitlines()
+                if re.search(r"(unreachable|unsatisfiable)", line)
+            ]
+            critical_path = reports / "vulture-critical.txt"
+            critical_path.write_text("\n".join(critical) + ("\n" if critical else ""), encoding="utf-8")
+            if critical:
+                print("Vulture found unreachable/unsatisfiable code:")
+                print("\n".join(critical))
+                sys.exit(1)
+            print("No critical Vulture issues found.")
+        language: system
+        types: [python]
+        pass_filenames: false

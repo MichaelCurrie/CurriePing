@@ -49,7 +49,11 @@ def _short_error(exc: BaseException) -> str:
         if isinstance(err, int) and errno is None:
             errno = err
         for arg in getattr(cur, "args", ()):
-            if isinstance(arg, OSError) and isinstance(arg.errno, int) and errno is None:
+            if (
+                isinstance(arg, OSError)
+                and isinstance(arg.errno, int)
+                and errno is None
+            ):
                 errno = arg.errno
         cur = cur.__cause__ or cur.__context__
 
