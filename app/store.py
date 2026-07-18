@@ -172,7 +172,9 @@ def _recent_pings(target: str, count: int) -> list[dict]:
     return pings
 
 
-def component(target: str, days: int, recent_count: int, check_interval_seconds: int) -> dict:
+def component(
+    target: str, days: int, recent_count: int, check_interval_seconds: int
+) -> dict:
     """Return daily buckets, recent per-ping bars, uptime %, and latest result.
 
     Daily row: one bar per UTC day over `days`.
@@ -223,9 +225,7 @@ def component(target: str, days: int, recent_count: int, check_interval_seconds:
     recent_with_data = [p for p in recent if p["state"] != "none"]
     recent_up = sum(1 for p in recent_with_data if p["ok"])
     recent_total = len(recent_with_data)
-    recent_uptime = (
-        round(100.0 * recent_up / recent_total, 3) if recent_total else None
-    )
+    recent_uptime = round(100.0 * recent_up / recent_total, 3) if recent_total else None
     # Window length the recent row represents when full (interval × slot count).
     recent_window_minutes = max(1, (recent_count * check_interval_seconds + 59) // 60)
 

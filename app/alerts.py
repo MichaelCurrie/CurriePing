@@ -33,7 +33,9 @@ def _enabled() -> bool:
 def _detail(result: dict) -> str:
     status_code = result.get("status_code")
     error = result.get("error")
-    return error or (f"HTTP {status_code}" if status_code is not None else "unreachable")
+    return error or (
+        f"HTTP {status_code}" if status_code is not None else "unreachable"
+    )
 
 
 def _post(title: str, body: str, tags: str, priority: str) -> None:
