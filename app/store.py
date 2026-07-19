@@ -169,11 +169,9 @@ def _omit_none(payload: dict[str, object]) -> dict[str, object]:
     return {key: value for key, value in payload.items() if value is not None}
 
 
-def _shorten_stored_error(error: object) -> str | None:
-    """Legacy rows may still hold raw urllib3 text; never emit that on the API."""
-    if not isinstance(error, str) or not error:
-        return None
-    if len(error) <= 80 and "HTTPSConnectionPool" not in error:
+def _shorten_one_error(error: str) -> str:
+    """Collapse one failure label; leave short structured labels untouched."""
+    if len(error) <= 120 and "HTTPSConnectionPool" not in error:
         return error
     lower = error.lower()
     if "name or service not known" in lower or "getaddrinfo" in lower:
@@ -191,6 +189,20 @@ def _shorten_stored_error(error: object) -> str | None:
     if "HTTP " in error[:8]:
         return error.split(":", 1)[0][:40]
     return "connection failed"
+
+
+def _shorten_stored_error(error: object) -> str | None:
+    """Legacy rows may still hold raw urllib3 text; never emit that on the API.
+
+    Multi-URL group failures are `; `-joined short labels — shorten each part
+    so a long aggregate is not collapsed to a useless \"connection failed\".
+    """
+    if not isinstance(error, str) or not error:
+        return None
+    parts = [p.strip() for p in error.split(";") if p.strip()]
+    if len(parts) > 1:
+        return "; ".join(_shorten_one_error(p) for p in parts)
+    return _shorten_one_error(error)
 
 
 def _status_label(
