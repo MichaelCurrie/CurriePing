@@ -2,7 +2,7 @@
 # (plain HTTP, viewable at the server IP). When set to a hostname, Caddy binds
 # it and auto-obtains a Let's Encrypt certificate.
 #
-# Upstream is the `app` service on the compose network (see docker-compose.yml).
+# Upstream is the static edge (`app` service → /data/www + live /api/status).
 {$STATUS_DOMAIN} {
 	encode gzip
 	reverse_proxy app:8080

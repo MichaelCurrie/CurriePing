@@ -1,0 +1,21 @@
+# Public edge for Cloudflare Tunnel (and anything else hitting app:8080).
+# Serves the on-disk snapshot under /data/www; proxies live API + health to
+# the monitor process so open tabs keep refreshing after each check cycle.
+:8080 {
+	encode gzip
+
+	handle /healthz {
+		reverse_proxy monitor:8080
+	}
+
+	# Live JSON for open-tab polling (fresher than the last file write).
+	handle /api/status {
+		reverse_proxy monitor:8080
+	}
+
+	handle {
+		root * /data/www
+		try_files {path} /index.html
+		file_server
+	}
+}

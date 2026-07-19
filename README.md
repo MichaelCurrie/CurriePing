@@ -59,7 +59,8 @@ Docker Compose services:
 
 | Service | Role |
 |---|---|
-| `app` | Python CurriePing process (probes sites, SQLite history, status page on `:8080` inside the network) |
+| `monitor` | Python CurriePing process (probes sites, SQLite history, writes static `/data/www`) |
+| `app` | Caddy static edge on `:8080` (serves `/data/www`, proxies live `/api/status`) — Tunnel target |
 | `proxy` | Optional [Caddy](https://caddyserver.com) on host `:80`/`:443` (local/dev or direct IPv6) |
 | `tunnel` | Optional `cloudflared` (profile `tunnel`) — Cloudflare Tunnel to `app:8080` for public IPv4+IPv6 without a public AWS IPv4 |
 

@@ -27,7 +27,7 @@ Pick one value and keep it consistent in the launch script below (`CHECK_IPV4=Fa
 4. Under **Public Hostname** add:
    - **Subdomain / Domain:** your `STATUS_DOMAIN` (e.g. `status` + `example.com`)
    - **Service:** `http://app:8080`  
-     (`app` is the Compose service name; cloudflared resolves it on the Docker network.)
+     (`app` is the static-edge Compose service; cloudflared resolves it on the Docker network. The Python monitor is the `monitor` service.)
 5. **DNS — put the zone on Cloudflare (Full Setup).**  
    A bare OpenSRS/Route53 CNAME to `<UUID>.cfargotunnel.com` is **not** enough for public browsers: that name only resolves to a private `fd10:` address, so `curl` / Chrome fail with “could not resolve host”. The hostname must be an **orange-cloud (proxied)** record in a Cloudflare zone so resolvers get Cloudflare’s public anycast **A/AAAA** (IPv4-only clients use the A).
 
@@ -243,7 +243,7 @@ echo "Public access is via Cloudflare Tunnel → https://$STATUS_DOMAIN"
 
 ```bash
 curl -I "https://$STATUS_DOMAIN"
-docker compose -f /opt/currieping/docker-compose.yml ps   # on the host: app + tunnel (+ proxy)
+docker compose -f /opt/currieping/docker-compose.yml ps   # on the host: monitor + app (edge) + tunnel (+ proxy)
 # On the status page header: IPv6 should be checked; IPv4 only if CHECK_IPV4=True.
 ```
 
@@ -332,9 +332,9 @@ Skip the tunnel. Publish an **AAAA** to the instance IPv6, keep SG 80/443 open o
 
 ### Static site export (write-to-disk)
 
-After every check cycle the app rewrites a complete static tree next to the DB (`/data/www` when using the default `STATUS_DB_PATH`): `index.html`, `api/status.json`, `icon/…`, `robots.txt`, `sitemap.xml`. You can point Nginx/Caddy/Apache (or a tunnel origin) at that directory instead of `app:8080`; keep the `app` container running so it continues probing and refreshing the files.
+After every check cycle the `monitor` service rewrites a complete static tree next to the DB (`/data/www` when using the default `STATUS_DB_PATH`): `index.html`, `api/status.json`, `icon/…`, `robots.txt`, `sitemap.xml`. The Compose service named `app` is Caddy: it serves that tree on `:8080` and proxies `/api/status` + `/healthz` to `monitor`, so Cloudflare Tunnel can keep using `http://app:8080`.
 
-The exported `index.html` embeds the latest status JSON so the first paint has no “Loading…” wait; bots also get noscript + JSON-LD in the same file. An open browser tab still polls `api/status.json` (and `/api/status` if Flask is on the same origin) every 30s so later check cycles show up without a full reload.
+The exported `index.html` embeds the latest status JSON so the first paint has no “Loading…” wait; bots also get noscript + JSON-LD in the same file. An open browser tab still polls `/api/status` (live) every 30s so later check cycles show up without a full reload.
 
 -----
 

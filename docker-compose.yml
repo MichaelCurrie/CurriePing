@@ -1,11 +1,15 @@
 # CurriePing stack — containers on a private Docker network.
 #
 # Layout:
-#   app/     Python service (Dockerfile, requirements, source)
-#   proxy/   Caddy reverse-proxy config (Caddyfile)
+#   app/     Python monitor (Dockerfile, requirements, source)
+#   proxy/   Caddy configs (static edge + optional public proxy)
 #
-#   app      Uptime monitor (Flask + waitress). Probes TARGETS, SQLite under
-#            /data, status page on :8080. Not published to the host.
+#   monitor  Uptime checker (Flask + waitress on :8080). Probes TARGETS,
+#            SQLite + static export under /data. Not the public origin.
+#
+#   app      Static edge (Caddy on :8080). Serves /data/www; proxies
+#            /api/status and /healthz to monitor. Cloudflare Tunnel keeps
+#            pointing at http://app:8080.
 #
 #   proxy    Optional direct publish of :80/:443 (Caddy + Let's Encrypt when
 #            STATUS_DOMAIN is set). Useful for local/dev or raw IPv6 AAAA.
@@ -23,7 +27,7 @@
 #   docker compose up -d --build --remove-orphans
 
 services:
-  app:
+  monitor:
     build:
       context: .
       dockerfile: app/Dockerfile
@@ -38,6 +42,19 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  # Named `app` so existing Cloudflare Tunnel hostnames (http://app:8080) keep working.
+  app:
+    image: caddy:2
+    restart: unless-stopped
+    volumes:
+      - status-data:/data:ro
+      - ./proxy/Caddyfile.www:/etc/caddy/Caddyfile:ro
+    expose:
+      - "8080"
+    depends_on:
+      monitor:
+        condition: service_healthy
 
   proxy:
     image: caddy:2
@@ -57,7 +74,7 @@ services:
     depends_on:
       - app
 
-  # Visitors → Cloudflare (IPv4+IPv6) → this connector → app:8080.
+  # Visitors → Cloudflare (IPv4+IPv6) → this connector → app:8080 (static edge).
   # No inbound ports required on the EC2 security group for HTTP/S.
   tunnel:
     image: cloudflare/cloudflared:latest
@@ -76,8 +93,10 @@ services:
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
     depends_on:
-      app:
+      monitor:
         condition: service_healthy
+      app:
+        condition: service_started
 
 networks:
   default:
