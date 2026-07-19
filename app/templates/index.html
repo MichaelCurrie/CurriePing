@@ -124,7 +124,7 @@
   }
   .component .top {
     display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
   }
   .component .name { font-weight: 600; font-size: 15px; text-decoration: none; color: var(--text); }
   .component .name:hover { text-decoration: underline; }
@@ -132,6 +132,17 @@
     width: 16px; height: 16px; border-radius: 3px;
     vertical-align: -3px; margin-right: 8px; object-fit: contain;
   }
+  /* Member hosts in a multi-URL group (www / redirect aliases). */
+  .component .aliases {
+    display: flex; flex-wrap: wrap; gap: 4px 10px;
+    margin: 0 0 12px; padding: 0; list-style: none;
+    color: var(--muted); font-size: 12px; line-height: 1.35;
+  }
+  .component .aliases a {
+    color: var(--muted); text-decoration: none;
+  }
+  .component .aliases a:hover { color: var(--text); text-decoration: underline; }
+  .component .aliases .canonical { color: var(--text); font-weight: 500; }
   .component .state { font-size: 13px; font-weight: 500; }
   .state.operational { color: var(--up); }
   .state.down        { color: var(--down); }
@@ -476,6 +487,27 @@ function barClass(state) {
   return "none";
 }
 
+/** Hostname for display; falls back to the raw URL if unparseable. */
+function urlHost(url) {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return String(url || "").replace(/^https?:\/\//, "").split("/")[0];
+  }
+}
+
+/** Linked host list for multi-URL groups (empty string when only one URL). */
+function renderAliases(c) {
+  const urls = Array.isArray(c.urls) && c.urls.length ? c.urls : (c.url ? [c.url] : []);
+  if (urls.length <= 1) return "";
+  const items = urls.map((u, i) => {
+    const host = escapeAttr(urlHost(u));
+    const cls = i === 0 ? ' class="canonical"' : "";
+    return `<li><a${cls} href="${escapeAttr(u)}" target="_blank" rel="noopener">${host}</a></li>`;
+  }).join("");
+  return `<ul class="aliases" aria-label="Domains checked in this group">${items}</ul>`;
+}
+
 function renderComponent(c, historyDays) {
   const el = document.createElement("div");
   el.className = "component";
@@ -503,6 +535,7 @@ function renderComponent(c, historyDays) {
       <a class="name" href="${c.url}" target="_blank" rel="noopener">${icon}${c.name}</a>
       <span class="state ${c.status}">${stateText}</span>
     </div>
+    ${renderAliases(c)}
     <div class="bars" style="--slots:${days}">${dayBars}</div>
     ${renderAxis(`${days} days ago`, "Today")}
     <div class="bars recent" style="--slots:${days}">${recentBars}</div>
