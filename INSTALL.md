@@ -13,14 +13,26 @@ Afterwards, the box refreshes to the latest CurriePing from git every 15 minutes
    - **Subdomain / Domain:** your `STATUS_DOMAIN` (e.g. `status` + `example.com`)
    - **Service:** `http://app:8080`  
      (`app` is the Compose service name; cloudflared resolves it on the Docker network.)
-5. **DNS — the hostname’s zone should be on Cloudflare (Full Setup).**  
-   A bare OpenSRS/Route53 CNAME to `<UUID>.cfargotunnel.com` is **not** enough for public browsers: that name only resolves to a private `fd10:` address, so `curl` / Chrome fail with “could not resolve host”.
+5. **DNS — put the zone on Cloudflare (Full Setup).**  
+   A bare OpenSRS/Route53 CNAME to `<UUID>.cfargotunnel.com` is **not** enough for public browsers: that name only resolves to a private `fd10:` address, so `curl` / Chrome fail with “could not resolve host”. The hostname must be an **orange-cloud (proxied)** record in a Cloudflare zone so resolvers get Cloudflare’s public anycast **A/AAAA** (IPv4-only clients use the A).
 
-   - **Recommended:** Add the domain in Cloudflare → copy existing records → switch the registrar nameservers to Cloudflare. Then create a **proxied (orange cloud) CNAME**:
-     - name: `status` (or your host)
-     - target: `<TUNNEL_UUID>.cfargotunnel.com`
-   - **Alternative:** Put the status page on a hostname already in Cloudflare (e.g. `status.example-on-cf.com`) and point the tunnel’s public hostname there.
-   - **Partial / CNAME setup** (domain stays on OpenSRS nameservers) is a paid Cloudflare feature and uses `hostname.cdn.cloudflare.net` targets — see Cloudflare’s Tunnel FAQ.
+   Checklist (OpenSRS → Cloudflare example):
+
+   1. Cloudflare dashboard → **Add site** → `example.com` (Free is fine).
+   2. Import/recreate every existing record (apex/www/mail A, MX, TXT, DKIM CNAMEs, etc.). Keep mail/DKIM **DNS only** (grey cloud).
+   3. Add **CNAME** `status` → `<TUNNEL_UUID>.cfargotunnel.com` with **Proxy ON** (orange cloud).
+   4. At the registrar (OpenSRS **Name Servers**), replace `ns*.systemdns.com` with the two Cloudflare nameservers shown in the dashboard (e.g. `aliza.ns.cloudflare.com` / `melnicoff.ns.cloudflare.com`).
+   5. Wait until the zone status is **Active** and Universal SSL finishes (HTTPS may  fail for a few minutes while the cert issues).
+   6. Verify from an IPv4-only machine (disable WARP/VPN first):
+
+      ```bash
+      nslookup -type=A status.example.com 1.1.1.1   # expect a public Cloudflare A, not fd10:
+      curl -4 -I https://status.example.com          # expect HTTP/2 or HTTP/1.1 200
+      ```
+
+   If your laptop’s DHCP DNS is still the home router, it may keep serving a stale `fd10:` answer after the cutover. Point the NIC at `1.1.1.1` / `1.0.0.1` (or `8.8.8.8`) and `Clear-DnsClientCache` (Windows) / flush DNS.
+
+   **IPv6-only EC2 note:** `docker-compose.yml` runs `cloudflared` with `--edge-ip-version 6 --protocol http2` so the connector can reach Cloudflare without a public IPv4 on the instance.
 
 #### 2. Launch the EC2 host
 
