@@ -90,10 +90,56 @@
     border-radius: var(--radius);
     padding: 14px 16px 12px;
     margin-bottom: 28px;
+    position: relative;
+    overflow: hidden;
+  }
+  .now-strip .label-row {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap; margin-bottom: 8px;
   }
   .now-strip .label {
     color: var(--muted); font-size: 12px; font-weight: 500;
-    margin-bottom: 10px;
+  }
+  .now-strip .checked-ago {
+    color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  /* Fuse: full right after a ping, shrinks to empty as the next check approaches. */
+  .next-ping {
+    margin-bottom: 12px;
+  }
+  .next-ping-track {
+    height: 3px; border-radius: 999px; background: var(--border);
+    overflow: hidden;
+  }
+  .next-ping-fill {
+    height: 100%; width: 100%; transform-origin: left center;
+    background: var(--up); border-radius: inherit;
+    transition: transform 0.9s linear, background-color 0.25s ease;
+  }
+  .next-ping-fill.waiting {
+    background: var(--partial);
+    transition: none;
+  }
+  .next-ping-caption {
+    color: var(--muted); font-size: 11px; margin-top: 5px;
+    font-variant-numeric: tabular-nums;
+  }
+  .now-strip.pinged .next-ping-fill {
+    animation: fusePulse 0.7s ease-out;
+  }
+  .now-strip.pinged .now-block {
+    animation: blockPulse 0.55s ease-out;
+  }
+  @keyframes fusePulse {
+    0% { background: var(--up); filter: brightness(1.35); }
+    40% { background: var(--up); filter: brightness(1.6); }
+    100% { filter: brightness(1); }
+  }
+  @keyframes blockPulse {
+    0% { transform: scale(1); }
+    35% { transform: scale(1.06); }
+    100% { transform: scale(1); }
   }
   .now-blocks {
     display: flex; flex-wrap: wrap; gap: 6px; align-items: stretch;
@@ -155,7 +201,7 @@
     grid-template-columns: repeat(var(--slots, 90), minmax(0, 1fr));
     gap: 2px; height: 34px;
   }
-  .bars.recent { height: 22px; margin-top: 10px; }
+  .bars.recent { height: 22px; margin-top: 10px; overflow: hidden; }
   .bar {
     border-radius: 2px; background: var(--none); min-width: 0;
     position: relative; cursor: default;
@@ -164,6 +210,29 @@
   .bar.up { background: var(--up); }
   .bar.partial { background: var(--partial); }
   .bar.down { background: var(--down); }
+  /* New ping: every oval slides one slot left; newest pops in on the right. */
+  .bars.recent.has-new .bar {
+    animation: barShiftLeft 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .bars.recent.has-new .bar:last-child {
+    animation: barEnter 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  @keyframes barShiftLeft {
+    from { transform: translateX(calc(100% + 2px)); }
+    to { transform: translateX(0); }
+  }
+  @keyframes barEnter {
+    0% { transform: translateX(calc(100% + 2px)) scaleY(0.35); opacity: 0; }
+    55% { transform: translateX(0) scaleY(1.15); opacity: 1; }
+    100% { transform: translateX(0) scaleY(1); opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .next-ping-fill { transition: none; }
+    .now-strip.pinged .next-ping-fill,
+    .now-strip.pinged .now-block,
+    .bars.recent.has-new .bar,
+    .bars.recent.has-new .bar:last-child { animation: none; }
+  }
 
   /* Hover tooltip: immediate, anchored above the bar / now-block. */
   .bar[data-tip]::after,
@@ -293,7 +362,16 @@
     </noscript>
 
     <div class="now-strip" id="now-strip" hidden>
-      <div class="label" id="now-label"></div>
+      <div class="label-row">
+        <div class="label" id="now-label"></div>
+        <div class="checked-ago" id="now-checked-ago" aria-live="polite"></div>
+      </div>
+      <div class="next-ping" id="next-ping" hidden>
+        <div class="next-ping-track" aria-hidden="true">
+          <div class="next-ping-fill" id="next-ping-fill"></div>
+        </div>
+        <div class="next-ping-caption" id="next-ping-caption"></div>
+      </div>
       <div class="now-blocks" id="now-blocks"></div>
     </div>
 
@@ -332,6 +410,8 @@ const HISTORY_DAYS = {{ history_days }};
 // Bootstrap paints immediately; these URLs are polled for as long as the tab is open.
 const API_STATUS_CANDIDATES = {{ api_status_candidates|tojson }};
 const REFRESH_MS = 30000;
+const TICK_MS = 1000;
+const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const STATE_TEXT = {
   operational: "Operational",
@@ -451,7 +531,71 @@ function lastPingTs(components) {
   return max;
 }
 
-function renderNowStrip(components) {
+/** Relative age for a unix-seconds timestamp (live “Ns ago” clock). */
+function formatCheckedAgo(pingTs, nowMs) {
+  if (pingTs == null) return "";
+  const sec = Math.max(0, Math.floor((nowMs / 1000) - pingTs));
+  if (sec < 1) return "just now";
+  if (sec === 1) return "1 second ago";
+  if (sec < 60) return `${sec} seconds ago`;
+  const min = Math.floor(sec / 60);
+  if (min === 1) return "1 minute ago";
+  if (min < 60) return `${min} minutes ago`;
+  const hr = Math.floor(min / 60);
+  if (hr === 1) return "1 hour ago";
+  return `${hr} hours ago`;
+}
+
+function updateLiveClocks(nowMs) {
+  const agoEl = document.getElementById("now-checked-ago");
+  const fill = document.getElementById("next-ping-fill");
+  const caption = document.getElementById("next-ping-caption");
+  const nextPing = document.getElementById("next-ping");
+  if (!agoEl || livePingTs == null) {
+    if (agoEl) agoEl.textContent = "";
+    if (nextPing) nextPing.hidden = true;
+    return;
+  }
+  agoEl.textContent = `checked ${formatCheckedAgo(livePingTs, nowMs)}`;
+
+  const interval = Math.max(1, liveCheckInterval);
+  const elapsed = Math.max(0, (nowMs / 1000) - livePingTs);
+  const remaining = Math.max(0, interval - elapsed);
+  const frac = Math.min(1, Math.max(0, remaining / interval));
+
+  nextPing.hidden = false;
+  fill.style.transform = `scaleX(${frac})`;
+  fill.classList.toggle("waiting", remaining <= 0);
+  if (remaining <= 0) {
+    caption.textContent = "checking now…";
+  } else if (remaining < 1.05) {
+    caption.textContent = "next check in 1s";
+  } else {
+    caption.textContent = `next check in ${Math.ceil(remaining)}s`;
+  }
+}
+
+function flashPingArrival() {
+  const strip = document.getElementById("now-strip");
+  const fill = document.getElementById("next-ping-fill");
+  if (fill) {
+    // Snap the fuse back to full without sliding through the empty state.
+    fill.style.transition = "none";
+    fill.classList.remove("waiting");
+    fill.style.transform = "scaleX(1)";
+    void fill.offsetWidth;
+    fill.style.transition = "";
+  }
+  if (!strip || strip.hidden || reduceMotion) return;
+  strip.classList.remove("pinged");
+  // Force reflow so re-adding the class restarts the keyframes.
+  void strip.offsetWidth;
+  strip.classList.add("pinged");
+  window.clearTimeout(flashPingArrival._t);
+  flashPingArrival._t = window.setTimeout(() => strip.classList.remove("pinged"), 750);
+}
+
+function renderNowStrip(components, { pingArrived = false } = {}) {
   const strip = document.getElementById("now-strip");
   const row = document.getElementById("now-blocks");
   const label = document.getElementById("now-label");
@@ -459,10 +603,14 @@ function renderNowStrip(components) {
     strip.hidden = true;
     row.innerHTML = "";
     label.innerHTML = "";
+    document.getElementById("now-checked-ago").textContent = "";
+    document.getElementById("next-ping").hidden = true;
+    livePingTs = null;
     return;
   }
   strip.hidden = false;
   const pingTs = lastPingTs(components);
+  livePingTs = pingTs;
   label.innerHTML = pingTs != null
     ? `Current Status (${formatUpdated(new Date(pingTs * 1000))})`
     : "Current Status";
@@ -475,6 +623,8 @@ function renderNowStrip(components) {
       : "";
     return `<a class="now-block ${cls}" href="${c.url}" target="_blank" rel="noopener" data-tip="${tip}" aria-label="${escapeAttr(c.name)}">${icon}</a>`;
   }).join("");
+  updateLiveClocks(Date.now());
+  if (pingArrived) flashPingArrival();
 }
 
 function renderAxis(left, right) {
@@ -512,9 +662,20 @@ function renderAliases(c) {
   return `<ul class="aliases" aria-label="Domains checked in this group">${items}</ul>`;
 }
 
-function renderComponent(c, historyDays) {
+/** Fingerprint of the newest real ping so we can detect a fresh check. */
+function newestRecentTs(recent) {
+  if (!recent || !recent.length) return null;
+  for (let i = recent.length - 1; i >= 0; i--) {
+    const p = recent[i];
+    if (p && p.state !== "none" && p.ts != null) return p.ts;
+  }
+  return null;
+}
+
+function renderComponent(c, historyDays, { animateRecent = false } = {}) {
   const el = document.createElement("div");
   el.className = "component";
+  el.dataset.name = c.name;
   const days = Math.max(1, Number(historyDays) || HISTORY_DAYS);
 
   const stateText = liveLabel(c);
@@ -526,7 +687,10 @@ function renderComponent(c, historyDays) {
     `<div class="bar ${barClass(b.state)}" data-tip="${escapeAttr(dayTip(b))}"></div>`
   ).join("");
 
-  const recentBars = padRecent(c.recent, days).map(p =>
+  const recent = padRecent(c.recent, days);
+  const recentTs = newestRecentTs(c.recent);
+  const recentClass = animateRecent && !reduceMotion ? "bars recent has-new" : "bars recent";
+  const recentBars = recent.map(p =>
     `<div class="bar ${barClass(p.state)}" data-tip="${escapeAttr(pingTip(p))}"></div>`
   ).join("");
 
@@ -542,7 +706,7 @@ function renderComponent(c, historyDays) {
     ${renderAliases(c)}
     <div class="bars" style="--slots:${days}">${dayBars}</div>
     ${renderAxis(`${days} days ago`, "Today")}
-    <div class="bars recent" style="--slots:${days}">${recentBars}</div>
+    <div class="${recentClass}" style="--slots:${days}" data-recent-ts="${recentTs == null ? "" : recentTs}">${recentBars}</div>
     ${renderAxis(`${windowLabel} ago`, "Now")}
     <div class="summaries">
       <span><strong>${dayUptime}</strong> uptime · ${days} days</span>
@@ -552,6 +716,13 @@ function renderComponent(c, historyDays) {
 }
 
 let lastUpdate = null;
+/** Last known server check time (unix seconds) for the live countdown. */
+let livePingTs = null;
+let liveCheckInterval = {{ check_interval_seconds }};
+/** Per-service newest recent-ping ts from the previous paint (shift animation). */
+let prevRecentTsByName = Object.create(null);
+let refreshInFlight = false;
+let dueRefreshArmed = false;
 
 // Wikidata items for timezone abbreviations (extend as needed).
 const TZ_WIKIDATA = { EDT: "Q941023" };
@@ -576,19 +747,34 @@ function formatUpdated(d) {
 }
 
 function applyStatus(data) {
-  renderNowStrip(data.components || []);
+  const components = data.components || [];
+  if (data.check_interval_seconds != null) {
+    liveCheckInterval = Math.max(1, Number(data.check_interval_seconds) || liveCheckInterval);
+  }
+  const nextPingTs = lastPingTs(components);
+  const pingArrived = livePingTs != null && nextPingTs != null && nextPingTs > livePingTs;
+  renderNowStrip(components, { pingArrived });
   setProbeFamily(document.getElementById("probe-ipv6"), data.check_ipv6 !== false);
   setProbeFamily(document.getElementById("probe-ipv4"), !!data.check_ipv4);
 
   const historyDays = data.history_days != null ? data.history_days : HISTORY_DAYS;
   const container = document.getElementById("components");
   container.innerHTML = "";
-  (data.components || []).forEach(c => container.appendChild(renderComponent(c, historyDays)));
+  const nextRecent = Object.create(null);
+  components.forEach(c => {
+    const recentTs = newestRecentTs(c.recent);
+    nextRecent[c.name] = recentTs;
+    const prevTs = prevRecentTsByName[c.name];
+    const animateRecent = prevTs != null && recentTs != null && recentTs > prevTs;
+    container.appendChild(renderComponent(c, historyDays, { animateRecent }));
+  });
+  prevRecentTsByName = nextRecent;
+  if (pingArrived) dueRefreshArmed = false;
 
   document.getElementById("interval").textContent = data.check_interval_seconds;
   const d = new Date(data.generated_at * 1000);
   document.getElementById("updated").textContent =
-    (data.components || []).length + " services monitored";
+    components.length + " services monitored";
   lastUpdate = Date.now();
   document.getElementById("ago").innerHTML = formatUpdated(d);
 }
@@ -614,12 +800,38 @@ async function fetchStatus() {
 }
 
 async function refresh() {
+  if (refreshInFlight) return;
+  refreshInFlight = true;
   try {
     applyStatus(await fetchStatus());
   } catch (e) {
     // Keep the last good paint (bootstrap or prior poll); only fail if never loaded.
     if (lastUpdate == null) {
       document.getElementById("updated").textContent = "Unable to load status";
+    }
+  } finally {
+    refreshInFlight = false;
+  }
+}
+
+function tickLiveUi() {
+  const nowMs = Date.now();
+  updateLiveClocks(nowMs);
+  // When the fuse empties, poll promptly so the new ping can animate in.
+  if (livePingTs != null && !dueRefreshArmed && !refreshInFlight) {
+    const remaining = liveCheckInterval - ((nowMs / 1000) - livePingTs);
+    if (remaining <= 0) {
+      dueRefreshArmed = true;
+      refresh().then(() => {
+        // Server may still be mid-cycle; retry after a short backoff.
+        const stillDue = livePingTs != null
+          && ((Date.now() / 1000) - livePingTs) >= liveCheckInterval;
+        if (stillDue) {
+          window.setTimeout(() => { dueRefreshArmed = false; }, 5000);
+        } else {
+          dueRefreshArmed = false;
+        }
+      });
     }
   }
 }
@@ -634,8 +846,12 @@ try {
 }
 refresh();
 setInterval(refresh, REFRESH_MS);
+setInterval(tickLiveUi, TICK_MS);
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") refresh();
+  if (document.visibilityState === "visible") {
+    tickLiveUi();
+    refresh();
+  }
 });
 </script>
 </body>
