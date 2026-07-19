@@ -31,14 +31,18 @@ def _overall(components: list[dict[str, object]]) -> str:
         return "unknown"
     if "down" in states:
         return "down"
-    # Only today's bucket signals current degradation.
+    # Only today's UTC bucket signals current degradation (buckets are sparse).
+    today_key = datetime.now(timezone.utc).date().isoformat()
     for component in components:
         buckets = component.get("buckets")
-        if not isinstance(buckets, list) or not buckets:
+        if not isinstance(buckets, list):
             continue
-        today = buckets[-1]
-        if isinstance(today, dict) and today.get("state") == "partial":
-            return "degraded"
+        for raw in buckets:
+            if not isinstance(raw, dict):
+                continue
+            bucket = cast(dict[str, object], raw)
+            if bucket.get("date") == today_key and bucket.get("state") == "partial":
+                return "degraded"
     if "unknown" in states and states != {"operational", "unknown"}:
         return "degraded"
     return "operational"
@@ -62,14 +66,14 @@ def _build_status() -> dict[str, object]:
             if fetched_at is not None
             else None
         )
-        components.append(
-            {
-                "name": target.name,
-                "url": target.url,
-                "icon": icon,
-                **data,
-            }
-        )
+        entry: dict[str, object] = {
+            "name": target.name,
+            "url": target.url,
+            **data,
+        }
+        if icon is not None:
+            entry["icon"] = icon
+        components.append(entry)
     return {
         "title": config.TITLE,
         "version": config.VERSION,

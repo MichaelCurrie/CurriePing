@@ -281,7 +281,7 @@
           <code>GET</code>
           <a href="{{ api_status_url }}">{{ api_status_url }}</a>
           returns overall status, per-service state, uptime, and recent checks
-          as <code>application/json</code> (no auth).
+          as compact <code>application/json</code> (no auth).
         </p>
         <code class="curl">curl -sS "{{ api_status_url }}"</code>
         <p>
@@ -317,6 +317,37 @@ function dayTip(b) {
   if (b.state === "none") return `${b.date}: no data`;
   const pct = (b.ratio * 100).toFixed(b.ratio === 1 ? 0 : 1);
   return `${b.date}: ${pct}% up (${b.up}/${b.total} checks)`;
+}
+
+/** UTC YYYY-MM-DD for `daysAgo` (0 = today). */
+function utcDateKey(daysAgo) {
+  const d = new Date();
+  d.setUTCHours(0, 0, 0, 0);
+  d.setUTCDate(d.getUTCDate() - daysAgo);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Expand sparse daily buckets to a fixed left→right history_days timeline. */
+function expandBuckets(sparse, days) {
+  const byDate = Object.create(null);
+  for (const b of sparse || []) {
+    if (b && b.date) byDate[b.date] = b;
+  }
+  const out = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const date = utcDateKey(i);
+    out.push(byDate[date] || { date, state: "none" });
+  }
+  return out;
+}
+
+/** Left-pad recent checks so the bar row matches HISTORY_DAYS slots. */
+function padRecent(recent, slots) {
+  const row = (recent || []).slice(-slots);
+  const missing = slots - row.length;
+  if (missing <= 0) return row;
+  const pad = Array.from({ length: missing }, () => ({ state: "none" }));
+  return pad.concat(row);
 }
 
 function liveLabel(c) {
@@ -421,11 +452,11 @@ function renderComponent(c) {
     ? `<img class="favicon" src="${c.icon}" alt="" loading="lazy" onerror="this.remove()">`
     : "";
 
-  const dayBars = (c.buckets || []).map(b =>
+  const dayBars = expandBuckets(c.buckets, HISTORY_DAYS).map(b =>
     `<div class="bar ${b.state === "none" ? "" : b.state}" data-tip="${escapeAttr(dayTip(b))}"></div>`
   ).join("");
 
-  const recentBars = (c.recent || []).map(p =>
+  const recentBars = padRecent(c.recent, HISTORY_DAYS).map(p =>
     `<div class="bar ${p.state === "none" ? "" : p.state}" data-tip="${escapeAttr(pingTip(p))}"></div>`
   ).join("");
 

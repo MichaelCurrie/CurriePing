@@ -164,6 +164,35 @@ def _tri_bool(value: object) -> bool | None:
     return bool(value)
 
 
+def _omit_none(payload: dict[str, object]) -> dict[str, object]:
+    """Drop null fields so the public JSON stays dense (wire + curl-friendly)."""
+    return {key: value for key, value in payload.items() if value is not None}
+
+
+def _shorten_stored_error(error: object) -> str | None:
+    """Legacy rows may still hold raw urllib3 text; never emit that on the API."""
+    if not isinstance(error, str) or not error:
+        return None
+    if len(error) <= 80 and "HTTPSConnectionPool" not in error:
+        return error
+    lower = error.lower()
+    if "name or service not known" in lower or "getaddrinfo" in lower:
+        return "DNS lookup failed"
+    if "connection refused" in lower:
+        return "connection refused"
+    if "timed out" in lower or "timeout" in lower:
+        return "connection timed out"
+    if "network is unreachable" in lower or "network unreachable" in lower:
+        return "network unreachable"
+    if "host is unreachable" in lower or "no route to host" in lower:
+        return "host unreachable"
+    if "certificate" in lower or "ssl" in lower or "tls" in lower:
+        return "TLS error"
+    if "HTTP " in error[:8]:
+        return error.split(":", 1)[0][:40]
+    return "connection failed"
+
+
 def _status_label(
     ok: bool,
     ipv4_ok: bool | None,
@@ -196,24 +225,26 @@ def _latest(target: str) -> dict[str, object] | None:
     ipv4_ok = _tri_bool(row[5])
     ipv6_ok = _tri_bool(row[6])
     ok = bool(row[1])
-    return {
-        "ts": row[0],
-        "ok": ok,
-        "status_code": row[2],
-        "latency_ms": row[3],
-        "error": row[4],
-        "ipv4_ok": ipv4_ok,
-        "ipv6_ok": ipv6_ok,
-        "ipv4_error": row[7],
-        "ipv6_error": row[8],
-        "ipv4_status_code": row[9],
-        "ipv6_status_code": row[10],
-        "status_label": _status_label(ok, ipv4_ok, ipv6_ok),
-    }
+    return _omit_none(
+        {
+            "ts": row[0],
+            "ok": ok,
+            "status_code": row[2],
+            "latency_ms": row[3],
+            "error": _shorten_stored_error(row[4]),
+            "ipv4_ok": ipv4_ok,
+            "ipv6_ok": ipv6_ok,
+            "ipv4_error": _shorten_stored_error(row[7]),
+            "ipv6_error": _shorten_stored_error(row[8]),
+            "ipv4_status_code": row[9],
+            "ipv6_status_code": row[10],
+            "status_label": _status_label(ok, ipv4_ok, ipv6_ok),
+        }
+    )
 
 
 def _recent_pings(target: str, count: int) -> list[dict[str, object]]:
-    """Newest `count` individual checks, returned oldest -> newest (left to right)."""
+    """Newest `count` checks, oldest → newest. No empty left-pad (UI pads)."""
     assert _conn is not None
     rows = _conn.execute(
         "SELECT ts, ok, status_code, latency_ms, error, "
@@ -236,37 +267,22 @@ def _recent_pings(target: str, count: int) -> list[dict[str, object]]:
         ipv4_ok = _tri_bool(ipv4_ok_raw)
         ipv6_ok = _tri_bool(ipv6_ok_raw)
         pings.append(
-            {
-                "ts": ts,
-                "ok": bool(ok),
-                "state": "up" if ok else "down",
-                "status_code": status_code,
-                "latency_ms": latency_ms,
-                "error": error,
-                "ipv4_ok": ipv4_ok,
-                "ipv6_ok": ipv6_ok,
-                "ipv4_error": ipv4_error,
-                "ipv6_error": ipv6_error,
-                "status_label": _status_label(bool(ok), ipv4_ok, ipv6_ok),
-            }
+            _omit_none(
+                {
+                    "ts": ts,
+                    "ok": bool(ok),
+                    "state": "up" if ok else "down",
+                    "status_code": status_code,
+                    "latency_ms": latency_ms,
+                    "error": _shorten_stored_error(error),
+                    "ipv4_ok": ipv4_ok,
+                    "ipv6_ok": ipv6_ok,
+                    "ipv4_error": _shorten_stored_error(ipv4_error),
+                    "ipv6_error": _shorten_stored_error(ipv6_error),
+                    "status_label": _status_label(bool(ok), ipv4_ok, ipv6_ok),
+                }
+            )
         )
-    # Pad on the left so the row always has `count` slots (matches daily bar count).
-    missing = count - len(pings)
-    if missing > 0:
-        empty: dict[str, object] = {
-            "ts": None,
-            "ok": None,
-            "state": "none",
-            "status_code": None,
-            "latency_ms": None,
-            "error": None,
-            "ipv4_ok": None,
-            "ipv6_ok": None,
-            "ipv4_error": None,
-            "ipv6_error": None,
-            "status_label": None,
-        }
-        pings = [dict(empty) for _ in range(missing)] + pings
     return pings
 
 
@@ -275,9 +291,9 @@ def component(
 ) -> dict[str, object]:
     """Return daily buckets, recent per-ping bars, uptime %, and latest result.
 
-    Daily row: one bar per UTC day over `days`.
-    Recent row: one bar per individual check, sized to `recent_count` slots so it
-    visually matches the daily row; the window label is derived from interval.
+    Daily buckets: only days with at least one check (UI expands to `days`).
+    Recent: up to `recent_count` real checks; UI left-pads empty slots to match
+    the daily bar count. Window label = interval × slot count.
     """
     assert _conn is not None
     with _lock:
@@ -303,16 +319,15 @@ def component(
         up_sum += up
         total_sum += total
         if total == 0:
-            state = "none"
-            ratio = None
-        else:
-            ratio = up / total
-            state = "up" if ratio >= 0.999 else ("down" if ratio == 0 else "partial")
+            # Sparse API: empty days are reconstructed client-side from history_days.
+            continue
+        ratio = up / total
+        state = "up" if ratio >= 0.999 else ("down" if ratio == 0 else "partial")
         buckets.append(
             {
                 "date": key,
                 "state": state,
-                "ratio": ratio,
+                "ratio": round(ratio, 4),
                 "up": up,
                 "total": total,
             }
@@ -320,9 +335,8 @@ def component(
 
     uptime = round(100.0 * up_sum / total_sum, 3) if total_sum else None
 
-    recent_with_data = [p for p in recent if p["state"] != "none"]
-    recent_up = sum(1 for p in recent_with_data if p["ok"])
-    recent_total = len(recent_with_data)
+    recent_up = sum(1 for p in recent if p.get("ok"))
+    recent_total = len(recent)
     recent_uptime = round(100.0 * recent_up / recent_total, 3) if recent_total else None
     # Window length the recent row represents when full (interval × slot count).
     recent_window_minutes = max(1, (recent_count * check_interval_seconds + 59) // 60)
@@ -339,13 +353,15 @@ def component(
             else ("Operational" if latest["ok"] else "Down")
         )
 
-    return {
-        "status": status,
-        "status_label": status_label,
-        "uptime": uptime,
-        "recent_uptime": recent_uptime,
-        "recent_window_minutes": recent_window_minutes,
-        "latest": latest,
-        "buckets": buckets,
-        "recent": recent,
-    }
+    return _omit_none(
+        {
+            "status": status,
+            "status_label": status_label,
+            "uptime": uptime,
+            "recent_uptime": recent_uptime,
+            "recent_window_minutes": recent_window_minutes,
+            "latest": latest,
+            "buckets": buckets,
+            "recent": recent,
+        }
+    )
