@@ -333,8 +333,10 @@ def component(
     else:
         status = "operational" if latest["ok"] else "down"
         label = latest.get("status_label")
-        status_label = label if isinstance(label, str) else (
-            "Operational" if latest["ok"] else "Down"
+        status_label = (
+            label
+            if isinstance(label, str)
+            else ("Operational" if latest["ok"] else "Down")
         )
 
     return {

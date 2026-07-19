@@ -295,12 +295,7 @@ def index():
 def robots_txt() -> Response:
     """Explicit allow-all — status pages should be fully crawlable."""
     page = _page_url()
-    body = (
-        "User-agent: *\n"
-        "Allow: /\n"
-        "\n"
-        f"Sitemap: {urljoin(page, 'sitemap.xml')}\n"
-    )
+    body = f"User-agent: *\nAllow: /\n\nSitemap: {urljoin(page, 'sitemap.xml')}\n"
     return Response(body, mimetype="text/plain; charset=utf-8")
 
 

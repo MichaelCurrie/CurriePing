@@ -32,8 +32,8 @@ repos:
         pass_filenames: false
 
       - id: ruff-format
-        name: Ruff Format Check
-        entry: ruff format --check --force-exclude .
+        name: Ruff Format
+        entry: ruff format --force-exclude .
         language: system
         types: [python]
         pass_filenames: false
