@@ -1,7 +1,10 @@
-"""Favicon fetching and caching.
+"""Server-side favicon fetch, SQLite cache, and static export paths.
 
-Each target's favicon is downloaded and stored in SQLite (bytes + content-type)
-so the status page can show it without hotlinking the origin on every render.
+The monitor process downloads each target's favicon and stores bytes +
+content-type in SQLite. The status JSON points browsers at same-origin
+`/icon/<name>.<ext>` URLs; the static export bakes those files under
+`EXPORT_DIR/icon/` for Caddy. Clients never fetch icons from the targets.
+
 A daemon thread sweeps the cache and re-fetches hourly (and once at startup).
 
 Resolution order per site, first hit wins:
@@ -15,13 +18,56 @@ from __future__ import annotations
 import re
 import threading
 import time
-from urllib.parse import urljoin, urlparse
+from urllib.parse import quote, urljoin, urlparse
 
 import requests
 
 from . import config, store
 
 REFRESH_INTERVAL_SECONDS = 3600
+
+# Extension used when baking `/icon/<name>.<ext>` for Caddy's file_server MIME map.
+_CONTENT_TYPE_EXT: dict[str, str] = {
+    "image/png": ".png",
+    "image/x-icon": ".ico",
+    "image/vnd.microsoft.icon": ".ico",
+    "image/svg+xml": ".svg",
+    "image/gif": ".gif",
+    "image/jpeg": ".jpg",
+    "image/webp": ".webp",
+}
+# Longest-first order for stripping; keep in sync with _CONTENT_TYPE_EXT values.
+_KNOWN_ICON_EXTS: tuple[str, ...] = (".png", ".ico", ".svg", ".gif", ".jpg", ".webp")
+
+
+def icon_extension(content_type: str) -> str:
+    """File extension for a cached favicon content-type (default `.bin`)."""
+    base = content_type.split(";", 1)[0].strip().lower()
+    return _CONTENT_TYPE_EXT.get(base, ".bin")
+
+
+def icon_filename(target_name: str, content_type: str) -> str:
+    """On-disk / URL basename: URL-encoded target name + type extension."""
+    return f"{quote(target_name, safe='')}{icon_extension(content_type)}"
+
+
+def icon_href(target_name: str, content_type: str, fetched_at: int) -> str:
+    """Same-origin icon URL; `?v=` busts caches when the hourly sweep updates bytes."""
+    return f"/icon/{icon_filename(target_name, content_type)}?v={fetched_at}"
+
+
+def icon_lookup_name(path_name: str) -> str:
+    """Strip a known image extension from an `/icon/…` path segment for DB lookup.
+
+    Target names may contain dots (`datum.locker`); only trailing favicon
+    extensions are removed.
+    """
+    lower = path_name.lower()
+    for ext in _KNOWN_ICON_EXTS:
+        if lower.endswith(ext):
+            return path_name[: -len(ext)]
+    return path_name
+
 
 # Magic-byte signatures so we can accept favicons served with a wrong/missing
 # Content-Type (common for /favicon.ico).

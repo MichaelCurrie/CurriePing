@@ -1,6 +1,9 @@
 # Public edge for Cloudflare Tunnel (and anything else hitting app:8080).
-# Serves the on-disk snapshot under /data/www; proxies live API, icons, and
-# health to the monitor so open tabs keep refreshing after each check cycle.
+# Serves the on-disk snapshot under /data/www; proxies live API + health to
+# the monitor so open tabs keep refreshing after each check cycle.
+#
+# Favicons are baked into /data/www/icon/ by the monitor export — serve them
+# as static files (never reverse_proxy, never SPA-fallback to index.html).
 :8080 {
 	encode gzip
 
@@ -13,9 +16,9 @@
 		reverse_proxy monitor:8080
 	}
 
-	# Favicons live in SQLite on the monitor; never SPA-fallback these to HTML.
 	handle /icon/* {
-		reverse_proxy monitor:8080
+		root * /data/www
+		file_server
 	}
 
 	handle {

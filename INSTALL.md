@@ -332,7 +332,7 @@ Skip the tunnel. Publish an **AAAA** to the instance IPv6, keep SG 80/443 open o
 
 ### Static site export (write-to-disk)
 
-After every check cycle the `monitor` service rewrites a complete static tree next to the DB (`/data/www` when using the default `STATUS_DB_PATH`): `index.html`, `api/status.json`, `icon/…`, `robots.txt`, `sitemap.xml`. The Compose service named `app` is Caddy: it serves that tree on `:8080` and proxies `/api/status` + `/healthz` to `monitor`, so Cloudflare Tunnel can keep using `http://app:8080`.
+After every check cycle the `monitor` service rewrites a complete static tree next to the DB (`/data/www` when using the default `STATUS_DB_PATH`): `index.html`, `api/status.json`, baked `icon/<name>.<ext>` favicons (fetched server-side into SQLite, never hotlinked by the browser), `robots.txt`, `sitemap.xml`. The Compose service named `app` is Caddy: it serves that tree on `:8080` and proxies only `/api/status` + `/healthz` to `monitor`, so Cloudflare Tunnel can keep using `http://app:8080`.
 
 The exported `index.html` embeds the latest status JSON so the first paint has no “Loading…” wait; bots also get noscript + JSON-LD in the same file. An open browser tab still polls `/api/status` (live) every 30s so later check cycles show up without a full reload.
 

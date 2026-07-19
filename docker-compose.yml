@@ -7,9 +7,9 @@
 #   monitor  Uptime checker (Flask + waitress on :8080). Probes TARGETS,
 #            SQLite + static export under /data. Not the public origin.
 #
-#   app      Static edge (Caddy on :8080). Serves /data/www; proxies
-#            /api/status and /healthz to monitor. Cloudflare Tunnel keeps
-#            pointing at http://app:8080.
+#   app      Static edge (Caddy on :8080). Serves /data/www (HTML, JSON,
+#            baked /icon/* favicons); proxies /api/status and /healthz to
+#            monitor. Cloudflare Tunnel keeps pointing at http://app:8080.
 #
 #   proxy    Optional direct publish of :80/:443 (Caddy + Let's Encrypt when
 #            STATUS_DOMAIN is set). Useful for local/dev or raw IPv6 AAAA.

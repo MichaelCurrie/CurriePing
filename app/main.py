@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from datetime import datetime, timezone
 from typing import cast
-from urllib.parse import quote, urljoin
+from urllib.parse import unquote, urljoin
 
 from flask import (
     Flask,
@@ -65,21 +65,17 @@ def _build_status() -> dict[str, object]:
             recent_count,
             config.CHECK_INTERVAL_SECONDS,
         )
-        fetched_at = store.favicon_fetched_at(target.name)
-        # ?v= busts browser caches when the hourly sweep replaces the bytes.
-        icon = (
-            f"/icon/{quote(target.name, safe='')}?v={fetched_at}"
-            if fetched_at is not None
-            else None
-        )
+        fav = store.get_favicon(target.name)
         entry: dict[str, object] = {
             "name": target.name,
             "url": target.url,
             "urls": list(target.urls),
             **data,
         }
-        if icon is not None:
-            entry["icon"] = icon
+        # Same-origin path to the baked/cached icon — never the target's URL.
+        if fav is not None:
+            _data, content_type, fetched_at = fav
+            entry["icon"] = favicons.icon_href(target.name, content_type, fetched_at)
         components.append(entry)
     return {
         "title": config.TITLE,
@@ -381,9 +377,10 @@ def api_status():
     return jsonify(_build_status())
 
 
-@app.route("/icon/<name>")
+@app.route("/icon/<path:name>")
 def icon(name: str) -> Response:
-    fav = store.get_favicon(name)
+    """Dev/direct-monitor fallback; production Caddy serves EXPORT_DIR/icon/."""
+    fav = store.get_favicon(favicons.icon_lookup_name(unquote(name)))
     if fav is None:
         abort(404)
         raise AssertionError("abort() does not return")

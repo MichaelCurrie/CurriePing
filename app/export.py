@@ -1,9 +1,10 @@
 """Write a static status snapshot to disk after each check cycle.
 
 Every cycle CurriePing renders the same HTML/JSON the live app serves and
-atomically replaces files under config.EXPORT_DIR. A plain file server can
-host that tree without hitting Flask — fast for humans and fully readable by
-bots (no client-side Loading wait on first paint).
+atomically replaces files under config.EXPORT_DIR. Caddy serves that tree
+(including baked `/icon/<name>.<ext>` favicons) without hitting Flask — fast
+for humans and fully readable by bots (no client-side Loading wait on first
+paint).
 """
 
 from __future__ import annotations
@@ -13,9 +14,8 @@ import logging
 import os
 import tempfile
 from pathlib import Path
-from urllib.parse import quote
 
-from . import config, store
+from . import config, favicons, store
 
 log = logging.getLogger(__name__)
 
@@ -83,12 +83,24 @@ def write(status: dict[str, object], html: str | bytes) -> None:
     if _STATIC_FAVICON.is_file():
         _atomic_write(root / "static" / "favicon.ico", _STATIC_FAVICON.read_bytes())
 
+    # Bake favicon bytes for Caddy file_server. Extensions pick the MIME type;
+    # prune anything not in the current target set so renames/removals stick.
+    icon_dir = root / "icon"
+    wanted: set[str] = set()
     for target in config.TARGETS:
         fav = store.get_favicon(target.name)
         if fav is None:
             continue
-        data, _content_type, _fetched_at = fav
-        # Match live /icon/<name> paths (query string is cache-bust only).
-        _atomic_write(root / "icon" / quote(target.name, safe=""), data)
+        data, content_type, _fetched_at = fav
+        filename = favicons.icon_filename(target.name, content_type)
+        wanted.add(filename)
+        _atomic_write(icon_dir / filename, data)
+    if icon_dir.is_dir():
+        for stale in icon_dir.iterdir():
+            if stale.is_file() and stale.name not in wanted:
+                try:
+                    stale.unlink()
+                except OSError:
+                    pass
 
     log.info("Wrote static status snapshot to %s", root)
