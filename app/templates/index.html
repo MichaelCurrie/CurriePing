@@ -197,6 +197,29 @@
   footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 26px; }
   footer .powered { display: inline-block; margin-top: 8px; color: var(--muted); text-decoration: none; }
   footer .powered:hover { text-decoration: underline; }
+  footer .machine {
+    margin-top: 18px; padding-top: 16px;
+    border-top: 1px solid var(--border);
+    text-align: left; max-width: 36rem; margin-left: auto; margin-right: auto;
+    line-height: 1.45;
+  }
+  footer .machine h2 {
+    margin: 0 0 6px; font-size: 12px; font-weight: 600; color: var(--text);
+  }
+  footer .machine p { margin: 0 0 8px; }
+  footer .machine code,
+  footer .machine .curl {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+  }
+  footer .machine .curl {
+    display: block; overflow-x: auto; white-space: nowrap;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 10px; margin: 0 0 8px;
+    color: var(--text);
+  }
+  footer .machine a { color: var(--muted); text-decoration: underline; }
+  footer .machine a:hover { color: var(--text); }
   /* Timezone abbr → Wikidata: visible but quieter than default link blue. */
   a.tz-link {
     color: var(--muted);
@@ -250,6 +273,26 @@
       Checks run every <span id="interval">–</span>s over the last {{ history_days }} days.
       <br>Auto-refreshes; last updated <span id="ago">just now</span>.
       <br><a class="powered" href="https://github.com/MichaelCurrie/CurriePing" target="_blank" rel="noopener">Powered by CurriePing v{{ version }}</a>
+
+      <div class="machine">
+        <h2>Machine-readable status</h2>
+        <p>
+          Prefer the JSON API over scraping this page.
+          <code>GET</code>
+          <a href="{{ api_status_url }}">{{ api_status_url }}</a>
+          returns overall status, per-service state, uptime, and recent checks
+          as <code>application/json</code> (no auth).
+        </p>
+        <code class="curl">curl -sS "{{ api_status_url }}"</code>
+        <p>
+          This HTML also embeds
+          <a href="https://json-ld.org/">JSON-LD</a>
+          (<code>application/ld+json</code> in <code>&lt;head&gt;</code>)
+          and advertises the API via
+          <code>&lt;link rel="alternate" type="application/json"&gt;</code>.
+          Crawlers are welcome — see <a href="/robots.txt">/robots.txt</a>.
+        </p>
+      </div>
     </footer>
   </div>
 
