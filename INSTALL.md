@@ -187,6 +187,9 @@ chmod +x /usr/local/bin/currieping-auto-update
 echo '*/15 * * * * root /usr/local/bin/currieping-auto-update' \\
   > /etc/cron.d/currieping-auto-update
 chmod 644 /etc/cron.d/currieping-auto-update
+# IPv6-only hosts cannot git-fetch GitHub (A-record only). Point origin at a
+# dual-stack VPC sibling that mirrors the repo over HTTPS, e.g.:
+#   git remote set-url origin ubuntu@172.31.x.x:/var/cache/currieping.git
 EOF
 
 # 5. Launch. IPv6-only: no public IPv4. Dual-stack: public IPv4 + Elastic IP.
