@@ -120,9 +120,9 @@ def fetch_favicon(url: str) -> tuple[bytes, str] | None:
 
 
 def refresh_all() -> None:
-    # Wipe first so a previously cached bad icon cannot outlive a failed re-fetch
-    # for that target; the status page simply omits the img until the next success.
-    store.clear_favicons()
+    # Update per target only after a successful fetch. Do not wipe the table
+    # first — on IPv6-only hosts many icon URLs fail, and a full clear would
+    # blank every favicon until the next lucky sweep.
     for target in config.TARGETS:
         result = fetch_favicon(target.url)
         if result:

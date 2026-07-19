@@ -35,6 +35,8 @@ def _atomic_write(path: Path, data: bytes) -> None:
             tmp.write(data)
             tmp.flush()
             os.fsync(tmp.fileno())
+        # mkstemp defaults to 0o600; the static edge needs world-read.
+        os.chmod(tmp_name, 0o644)
         os.replace(tmp_name, path)
     except Exception:
         try:
