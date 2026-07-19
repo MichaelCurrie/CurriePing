@@ -39,7 +39,7 @@ Paste into an LLM agent (Claude Code, etc.):
 > ``` 
 > STATUS_DOMAIN=status.example.com
 > STATUS_TITLE=My Service Status Webpage
-> TARGETS=microsoft=https://www.microsoft.com,google=https://www.google.com
+> TARGETS=microsoft=https://www.microsoft.com|https://microsoft.com,google=https://www.google.com
 > NTFY_URL=https://ntfy.sh/status-rforjgeorij234
 > CHECK_IPV4=False
 > ```

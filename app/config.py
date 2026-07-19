@@ -14,8 +14,19 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class Target:
+    """One status-page row: a display name plus one or more URLs to probe.
+
+    The first URL is the canonical link (favicon, click-through). Extra URLs
+    are usually www / redirect aliases; the checker requires every URL to be
+    reachable and to land on the canonical host after redirects.
+    """
+
     name: str
-    url: str
+    urls: tuple[str, ...]
+
+    @property
+    def url(self) -> str:
+        return self.urls[0]
 
 
 def _read_version() -> str:
@@ -31,26 +42,41 @@ VERSION = _read_version()
 
 
 def _parse_targets(raw: str) -> list[Target]:
-    """Parse a `Name=URL,Name=URL` string into Target objects.
+    """Parse `Name=URL|URL,Name=URL` into grouped Target objects.
 
-    Whitespace around entries is ignored. Entries without an `=` are treated
-    as a bare URL and the host becomes the display name. URLs never contain a
-    comma, so a comma is always an entry separator.
+    - Comma separates groups (URLs never contain commas).
+    - Within a group, `|` lists multiple URLs that share one status row.
+    - The same Name repeated merges URLs (first-seen order, deduped).
+    - Bare URL entries use the host as the display name.
     """
-    targets: list[Target] = []
+    order: list[str] = []
+    by_name: dict[str, list[str]] = {}
+
     for chunk in raw.split(","):
         chunk = chunk.strip()
         if not chunk:
             continue
         if "=" in chunk:
-            name, url = chunk.split("=", 1)
-            name, url = name.strip(), url.strip()
+            name, url_part = chunk.split("=", 1)
+            name, url_part = name.strip(), url_part.strip()
         else:
-            url = chunk
-            name = url.split("//", 1)[-1].split("/", 1)[0]
-        if url:
-            targets.append(Target(name=name or url, url=url))
-    return targets
+            url_part = chunk
+            name = url_part.split("//", 1)[-1].split("/", 1)[0].split("|", 1)[0]
+
+        urls = [u.strip() for u in url_part.split("|") if u.strip()]
+        if not name or not urls:
+            continue
+
+        if name not in by_name:
+            order.append(name)
+            by_name[name] = []
+        seen = set(by_name[name])
+        for url in urls:
+            if url not in seen:
+                by_name[name].append(url)
+                seen.add(url)
+
+    return [Target(name=n, urls=tuple(by_name[n])) for n in order]
 
 
 def _int(name: str, default: int) -> int:

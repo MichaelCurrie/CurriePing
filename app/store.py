@@ -197,15 +197,23 @@ def _status_label(
     ok: bool,
     ipv4_ok: bool | None,
     ipv6_ok: bool | None,
+    error: str | None = None,
 ) -> str:
-    """LIVE indicator text: Operational, or per-family up/down when failing."""
+    """LIVE indicator text: Operational, or a short failure reason.
+
+    Prefer a concrete `error` (e.g. `nematode.io: redirects to …`) over bare
+    IPv4/IPv6 flags so multi-URL groups stay readable when one alias fails.
+    """
+    if ok:
+        return "Operational"
+    if isinstance(error, str) and error.strip():
+        first = error.split(";", 1)[0].strip()
+        return first if len(first) <= 72 else first[:69] + "..."
     parts: list[str] = []
     if ipv6_ok is not None:
         parts.append(f"IPv6 {'up' if ipv6_ok else 'down'}")
     if ipv4_ok is not None:
         parts.append(f"IPv4 {'up' if ipv4_ok else 'down'}")
-    if ok:
-        return "Operational"
     if parts:
         return " · ".join(parts)
     return "Down"
@@ -238,7 +246,9 @@ def _latest(target: str) -> dict[str, object] | None:
             "ipv6_error": _shorten_stored_error(row[8]),
             "ipv4_status_code": row[9],
             "ipv6_status_code": row[10],
-            "status_label": _status_label(ok, ipv4_ok, ipv6_ok),
+            "status_label": _status_label(
+                ok, ipv4_ok, ipv6_ok, _shorten_stored_error(row[4])
+            ),
         }
     )
 
@@ -279,7 +289,9 @@ def _recent_pings(target: str, count: int) -> list[dict[str, object]]:
                     "ipv6_ok": ipv6_ok,
                     "ipv4_error": _shorten_stored_error(ipv4_error),
                     "ipv6_error": _shorten_stored_error(ipv6_error),
-                    "status_label": _status_label(bool(ok), ipv4_ok, ipv6_ok),
+                    "status_label": _status_label(
+                        bool(ok), ipv4_ok, ipv6_ok, _shorten_stored_error(error)
+                    ),
                 }
             )
         )

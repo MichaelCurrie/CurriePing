@@ -13,7 +13,7 @@ CurriePing **always** runs HTTP checks over **IPv6**. Whether it also checks **I
 | `CHECK_IPV4=False` | **IPv6-only** — no public IPv4 | IPv6 ✓ · IPv4 ☐ | IPv6 only | none |
 | `CHECK_IPV4=True` | **Elastic IP** (public IPv4) + IPv6 | IPv6 ✓ · IPv4 ✓ | IPv4 + IPv6 | ~$3.65/mo for the public IPv4 |
 
-A site is marked red (down) if **any probed family** fails. The LIVE label then spells out which family failed (e.g. `IPv6 up · IPv4 down`).
+A site is marked red (down) if **any probed family** fails, or if any `|`-listed alias fails / redirects to the wrong host. The LIVE label spells out the failure (e.g. `IPv6 down`, or `nematode.io: redirects to …`).
 
 Visitors still use the Cloudflare Tunnel either way — the Elastic IP is only so the **monitor** can dial IPv4 targets. Do **not** add a NAT Gateway just for probes; an Elastic IP on the instance is the cheap dual-stack option.
 
@@ -59,7 +59,8 @@ REGION=ap-southeast-1
 KEYPAIR=my-keypair
 STATUS_DOMAIN=status.example.com
 STATUS_TITLE='My Service Status'
-TARGETS='microsoft=https://www.microsoft.com,google=https://www.google.com'
+# Pipe | groups redirect aliases under one status row (first URL is canonical).
+TARGETS='microsoft=https://www.microsoft.com|https://microsoft.com,google=https://www.google.com'
 # Token from Zero Trust → Tunnels → your tunnel → Docker
 CLOUDFLARE_TUNNEL_TOKEN='eyJ...'
 

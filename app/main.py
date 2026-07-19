@@ -69,6 +69,7 @@ def _build_status() -> dict[str, object]:
         entry: dict[str, object] = {
             "name": target.name,
             "url": target.url,
+            "urls": list(target.urls),
             **data,
         }
         if icon is not None:
