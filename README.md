@@ -10,7 +10,7 @@ A tiny self-hosted uptime monitor in the style of [Atlassian Statuspage](https:/
 
 https://status.michaelcurrie.com
 
-<img width="633" height="326" alt="image" src="https://github.com/user-attachments/assets/19847f23-c202-462a-adf5-fac50104476f" />
+<img width="865" height="678" alt="image" src="https://github.com/user-attachments/assets/d1cb7c1c-4bfe-4a68-82c2-01d704ba9ecc" />
 
 ## Comparison
 
