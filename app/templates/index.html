@@ -37,7 +37,8 @@
       --text: #e7eaee;
       --muted: #9aa4af;
       --border: #2a2f35;
-      --none: #2a2f35;
+      /* Distinct from card so empty history slots read as “no data”, not gaps. */
+      --none: #3d454e;
     }
   }
   * { box-sizing: border-box; }
@@ -53,27 +54,34 @@
   header.page { text-align: center; margin-bottom: 28px; }
   header.page h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; }
   header.page .sub { color: var(--muted); font-size: 13px; }
+  /* Read-only server config — not form controls (set via CHECK_IPV4 / CHECK_IPV6). */
   .probe-families {
     display: inline-flex; align-items: center; justify-content: center;
-    gap: 14px; margin-top: 10px; color: var(--muted); font-size: 12px;
+    flex-wrap: wrap; gap: 8px; margin-top: 12px;
+    color: var(--muted); font-size: 11px;
   }
-  .probe-family {
-    display: inline-flex; align-items: center; gap: 6px;
-    user-select: none;
+  .probe-families .probe-label {
+    letter-spacing: 0.04em; text-transform: uppercase; font-weight: 600;
   }
-  .probe-family .box {
-    width: 14px; height: 14px; border-radius: 3px;
-    border: 1.5px solid var(--muted);
-    display: inline-flex; align-items: center; justify-content: center;
-    font-size: 10px; line-height: 1; color: transparent;
-    background: transparent;
+  .probe-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 8px 2px 6px; border-radius: 4px;
+    border: 1px solid var(--border); background: transparent;
+    color: var(--muted); cursor: default; user-select: none;
   }
-  .probe-family.on .box {
+  .probe-chip .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--muted); opacity: 0.45;
+  }
+  .probe-chip.on {
+    color: var(--text);
     border-color: var(--up);
-    background: var(--up);
-    color: #fff;
+    background: rgba(38, 162, 105, 0.12);
   }
-  .probe-family.on { color: var(--text); }
+  .probe-chip.on .dot {
+    background: var(--up); opacity: 1;
+  }
+  .probe-chip .state-text { font-weight: 500; }
 
   /* Present-moment strip: one block per service, current status only. */
   .now-strip {
@@ -130,12 +138,18 @@
   .state.degraded    { color: var(--partial); }
   .state.unknown     { color: var(--muted); }
 
-  .bars { display: flex; gap: 2px; align-items: stretch; height: 34px; }
+  /* Fixed slot count (HISTORY_DAYS): missing API days stay visible as .none. */
+  .bars {
+    display: grid;
+    grid-template-columns: repeat(var(--slots, 90), minmax(0, 1fr));
+    gap: 2px; height: 34px;
+  }
   .bars.recent { height: 22px; margin-top: 10px; }
   .bar {
-    flex: 1 1 0; border-radius: 2px; background: var(--none); min-width: 2px;
+    border-radius: 2px; background: var(--none); min-width: 0;
     position: relative; cursor: default;
   }
+  .bar.none { background: var(--none); }
   .bar.up { background: var(--up); }
   .bar.partial { background: var(--partial); }
   .bar.down { background: var(--down); }
@@ -233,14 +247,19 @@
     <header class="page">
       <h1>{{ title }}</h1>
       <div class="sub" id="updated">Loading…</div>
-      <div class="probe-families" id="probe-families" aria-label="Address families probed">
-        <span class="probe-family {% if check_ipv6 %}on{% endif %}" id="probe-ipv6" title="HTTP checks over IPv6">
-          <span class="box" aria-hidden="true">{% if check_ipv6 %}✓{% endif %}</span>
+      <div class="probe-families" id="probe-families" aria-label="Address families probed (server configuration)">
+        <span class="probe-label">Probes</span>
+        <span class="probe-chip {% if check_ipv6 %}on{% endif %}" id="probe-ipv6"
+              title="Server config: HTTP checks over IPv6 (CHECK_IPV6)">
+          <span class="dot" aria-hidden="true"></span>
           IPv6
+          <span class="state-text">{% if check_ipv6 %}on{% else %}off{% endif %}</span>
         </span>
-        <span class="probe-family {% if check_ipv4 %}on{% endif %}" id="probe-ipv4" title="HTTP checks over IPv4 (needs public IPv4 egress on the host)">
-          <span class="box" aria-hidden="true">{% if check_ipv4 %}✓{% endif %}</span>
+        <span class="probe-chip {% if check_ipv4 %}on{% endif %}" id="probe-ipv4"
+              title="Server config: HTTP checks over IPv4 (CHECK_IPV4; needs public IPv4 egress)">
+          <span class="dot" aria-hidden="true"></span>
           IPv4
+          <span class="state-text">{% if check_ipv4 %}on{% else %}off{% endif %}</span>
         </span>
       </div>
     </header>
@@ -327,16 +346,25 @@ function utcDateKey(daysAgo) {
   return d.toISOString().slice(0, 10);
 }
 
-/** Expand sparse daily buckets to a fixed left→right history_days timeline. */
+/**
+ * API buckets are sparse (days with checks only). Always emit `days` slots
+ * oldest→newest so missing dates render as grey `.none` bars, not omitted.
+ */
 function expandBuckets(sparse, days) {
+  const n = Math.max(1, Number(days) || 1);
   const byDate = Object.create(null);
   for (const b of sparse || []) {
     if (b && b.date) byDate[b.date] = b;
   }
   const out = [];
-  for (let i = days - 1; i >= 0; i--) {
+  for (let i = n - 1; i >= 0; i--) {
     const date = utcDateKey(i);
-    out.push(byDate[date] || { date, state: "none" });
+    const hit = byDate[date];
+    if (hit && hit.state && hit.state !== "none") {
+      out.push(hit);
+    } else {
+      out.push({ date, state: "none", ratio: 0, up: 0, total: 0 });
+    }
   }
   return out;
 }
@@ -374,8 +402,8 @@ function pingTip(p) {
 
 function setProbeFamily(el, on) {
   el.classList.toggle("on", !!on);
-  const box = el.querySelector(".box");
-  if (box) box.textContent = on ? "✓" : "";
+  const label = el.querySelector(".state-text");
+  if (label) label.textContent = on ? "on" : "off";
 }
 
 function formatUptimeLabel(pct) {
@@ -443,24 +471,30 @@ function renderAxis(left, right) {
     </div>`;
 }
 
-function renderComponent(c) {
+function barClass(state) {
+  if (state === "up" || state === "partial" || state === "down") return state;
+  return "none";
+}
+
+function renderComponent(c, historyDays) {
   const el = document.createElement("div");
   el.className = "component";
+  const days = Math.max(1, Number(historyDays) || HISTORY_DAYS);
 
   const stateText = liveLabel(c);
   const icon = c.icon
     ? `<img class="favicon" src="${c.icon}" alt="" loading="lazy" onerror="this.remove()">`
     : "";
 
-  const dayBars = expandBuckets(c.buckets, HISTORY_DAYS).map(b =>
-    `<div class="bar ${b.state === "none" ? "" : b.state}" data-tip="${escapeAttr(dayTip(b))}"></div>`
+  const dayBars = expandBuckets(c.buckets, days).map(b =>
+    `<div class="bar ${barClass(b.state)}" data-tip="${escapeAttr(dayTip(b))}"></div>`
   ).join("");
 
-  const recentBars = padRecent(c.recent, HISTORY_DAYS).map(p =>
-    `<div class="bar ${p.state === "none" ? "" : p.state}" data-tip="${escapeAttr(pingTip(p))}"></div>`
+  const recentBars = padRecent(c.recent, days).map(p =>
+    `<div class="bar ${barClass(p.state)}" data-tip="${escapeAttr(pingTip(p))}"></div>`
   ).join("");
 
-  const windowLabel = formatWindowLabel(c.recent_window_minutes || HISTORY_DAYS);
+  const windowLabel = formatWindowLabel(c.recent_window_minutes || days);
   const dayUptime = formatUptimeLabel(c.uptime);
   const recentUptime = formatUptimeLabel(c.recent_uptime);
 
@@ -469,12 +503,12 @@ function renderComponent(c) {
       <a class="name" href="${c.url}" target="_blank" rel="noopener">${icon}${c.name}</a>
       <span class="state ${c.status}">${stateText}</span>
     </div>
-    <div class="bars">${dayBars}</div>
-    ${renderAxis(`${HISTORY_DAYS} days ago`, "Today")}
-    <div class="bars recent">${recentBars}</div>
+    <div class="bars" style="--slots:${days}">${dayBars}</div>
+    ${renderAxis(`${days} days ago`, "Today")}
+    <div class="bars recent" style="--slots:${days}">${recentBars}</div>
     ${renderAxis(`${windowLabel} ago`, "Now")}
     <div class="summaries">
-      <span><strong>${dayUptime}</strong> uptime · ${HISTORY_DAYS} days</span>
+      <span><strong>${dayUptime}</strong> uptime · ${days} days</span>
       <span><strong>${recentUptime}</strong> uptime · past ${windowLabel}</span>
     </div>`;
   return el;
@@ -513,9 +547,10 @@ async function refresh() {
     setProbeFamily(document.getElementById("probe-ipv6"), data.check_ipv6 !== false);
     setProbeFamily(document.getElementById("probe-ipv4"), !!data.check_ipv4);
 
+    const historyDays = data.history_days != null ? data.history_days : HISTORY_DAYS;
     const container = document.getElementById("components");
     container.innerHTML = "";
-    data.components.forEach(c => container.appendChild(renderComponent(c)));
+    data.components.forEach(c => container.appendChild(renderComponent(c, historyDays)));
 
     document.getElementById("interval").textContent = data.check_interval_seconds;
     const d = new Date(data.generated_at * 1000);
