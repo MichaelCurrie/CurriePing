@@ -23,7 +23,7 @@ https://status.michaelcurrie.com
 | [Uptime Kuma](https://github.com/louislam/uptime-kuma) | **$0** | unlimited | ~1 GB RAM → `t4g.micro` ~ **$6*** |
 | **CurriePing** | **$0** | **unlimited** | 0.5 GB RAM → `t4g.nano` ~ **$3*** |
 
-* No AWS public IPv4 (~$3.65/mo). Production uses [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) so IPv4 browsers still work.
+* Default deploy is IPv6-only (no AWS public IPv4, ~$3.65/mo saved). Production uses [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) so IPv4 browsers still reach the status page. Set `CHECK_IPV4=True` + an Elastic IP only if you also want the monitor to probe IPv4.
 
 ## How to Deploy - via one-shot LLM prompt
 
@@ -41,13 +41,15 @@ Paste into an LLM agent (Claude Code, etc.):
 > STATUS_TITLE=My Service Status Webpage
 > TARGETS=microsoft=https://www.microsoft.com,google=https://www.google.com
 > NTFY_URL=https://ntfy.sh/status-rforjgeorij234
+> CHECK_IPV4=False
 > ```
+> Explain `CHECK_IPV4` (must be exactly `True` or `False`): False = cheapest IPv6-only EC2 (IPv6 probes only); True = attach an Elastic IP (~$3.65/mo) so the monitor also probes IPv4. IPv6 is always checked. The status page shows IPv4/IPv6 checkboxes for which families are enabled.
 > 
 > 4. Confirm the `aws` CLI is installed and authenticated. If not, stop and help me install it.
 > 
 > 5. Confirm they have a Cloudflare account. Help them create a Cloudflare Tunnel (Zero Trust → Networks → Tunnels) with public hostname `STATUS_DOMAIN` → `http://app:8080`, and copy the tunnel token into `CLOUDFLARE_TUNNEL_TOKEN`. DNS should be a CNAME to `<tunnel-id>.cfargotunnel.com` (or Cloudflare-managed if the zone is on Cloudflare) — not an A/AAAA to the EC2 address.
 > 
-> 6. Follow [INSTALL.md](https://github.com/MichaelCurrie/CurriePing/blob/main/INSTALL.md) to deploy.
+> 6. Follow [INSTALL.md](https://github.com/MichaelCurrie/CurriePing/blob/main/INSTALL.md) to deploy (honor their CHECK_IPV4 choice in the launch script).
 
 ## How to Deploy - Manually
 

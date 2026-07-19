@@ -19,6 +19,21 @@ _conn: sqlite3.Connection | None = None
 _db_path = "/data/status.db"
 
 
+def _ensure_family_columns(conn: sqlite3.Connection) -> None:
+    """Add per-family columns on older DBs that predate dual-stack probes."""
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(checks)")}
+    for name, decl in (
+        ("ipv4_ok", "INTEGER"),
+        ("ipv6_ok", "INTEGER"),
+        ("ipv4_error", "TEXT"),
+        ("ipv6_error", "TEXT"),
+        ("ipv4_status_code", "INTEGER"),
+        ("ipv6_status_code", "INTEGER"),
+    ):
+        if name not in existing:
+            conn.execute(f"ALTER TABLE checks ADD COLUMN {name} {decl}")
+
+
 def init(db_path: str) -> None:
     global _conn, _db_path
     _db_path = db_path
@@ -38,6 +53,7 @@ def init(db_path: str) -> None:
         )
         """
     )
+    _ensure_family_columns(_conn)
     _conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_checks_target_ts ON checks(target, ts)"
     )
@@ -60,13 +76,36 @@ def record(
     status_code: int | None,
     latency_ms: float | None,
     error: str | None,
+    *,
+    ipv4_ok: bool | None = None,
+    ipv6_ok: bool | None = None,
+    ipv4_error: str | None = None,
+    ipv6_error: str | None = None,
+    ipv4_status_code: int | None = None,
+    ipv6_status_code: int | None = None,
 ) -> None:
     assert _conn is not None, "store.init() not called"
     with _lock:
         _conn.execute(
-            "INSERT INTO checks (target, ts, ok, status_code, latency_ms, error) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (target, int(time.time()), 1 if ok else 0, status_code, latency_ms, error),
+            "INSERT INTO checks ("
+            "target, ts, ok, status_code, latency_ms, error, "
+            "ipv4_ok, ipv6_ok, ipv4_error, ipv6_error, "
+            "ipv4_status_code, ipv6_status_code"
+            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                target,
+                int(time.time()),
+                1 if ok else 0,
+                status_code,
+                latency_ms,
+                error,
+                None if ipv4_ok is None else (1 if ipv4_ok else 0),
+                None if ipv6_ok is None else (1 if ipv6_ok else 0),
+                ipv4_error,
+                ipv6_error,
+                ipv4_status_code,
+                ipv6_status_code,
+            ),
         )
         _conn.commit()
 
@@ -119,21 +158,57 @@ def favicon_fetched_at(target: str) -> int | None:
     return int(row[0]) if row else None
 
 
+def _tri_bool(value: object) -> bool | None:
+    if value is None:
+        return None
+    return bool(value)
+
+
+def _status_label(
+    ok: bool,
+    ipv4_ok: bool | None,
+    ipv6_ok: bool | None,
+) -> str:
+    """LIVE indicator text: Operational, or per-family up/down when failing."""
+    parts: list[str] = []
+    if ipv6_ok is not None:
+        parts.append(f"IPv6 {'up' if ipv6_ok else 'down'}")
+    if ipv4_ok is not None:
+        parts.append(f"IPv4 {'up' if ipv4_ok else 'down'}")
+    if ok:
+        return "Operational"
+    if parts:
+        return " · ".join(parts)
+    return "Down"
+
+
 def _latest(target: str) -> dict[str, object] | None:
     assert _conn is not None
     row = _conn.execute(
-        "SELECT ts, ok, status_code, latency_ms, error FROM checks "
-        "WHERE target = ? ORDER BY ts DESC LIMIT 1",
+        "SELECT ts, ok, status_code, latency_ms, error, "
+        "ipv4_ok, ipv6_ok, ipv4_error, ipv6_error, "
+        "ipv4_status_code, ipv6_status_code "
+        "FROM checks WHERE target = ? ORDER BY ts DESC LIMIT 1",
         (target,),
     ).fetchone()
     if row is None:
         return None
+    ipv4_ok = _tri_bool(row[5])
+    ipv6_ok = _tri_bool(row[6])
+    ok = bool(row[1])
     return {
         "ts": row[0],
-        "ok": bool(row[1]),
+        "ok": ok,
         "status_code": row[2],
         "latency_ms": row[3],
         "error": row[4],
+        "ipv4_ok": ipv4_ok,
+        "ipv6_ok": ipv6_ok,
+        "ipv4_error": row[7],
+        "ipv6_error": row[8],
+        "ipv4_status_code": row[9],
+        "ipv6_status_code": row[10],
+        "status_label": _status_label(ok, ipv4_ok, ipv6_ok),
     }
 
 
@@ -141,12 +216,25 @@ def _recent_pings(target: str, count: int) -> list[dict[str, object]]:
     """Newest `count` individual checks, returned oldest -> newest (left to right)."""
     assert _conn is not None
     rows = _conn.execute(
-        "SELECT ts, ok, status_code, latency_ms, error FROM checks "
-        "WHERE target = ? ORDER BY ts DESC LIMIT ?",
+        "SELECT ts, ok, status_code, latency_ms, error, "
+        "ipv4_ok, ipv6_ok, ipv4_error, ipv6_error "
+        "FROM checks WHERE target = ? ORDER BY ts DESC LIMIT ?",
         (target, count),
     ).fetchall()
     pings: list[dict[str, object]] = []
-    for ts, ok, status_code, latency_ms, error in reversed(rows):
+    for (
+        ts,
+        ok,
+        status_code,
+        latency_ms,
+        error,
+        ipv4_ok_raw,
+        ipv6_ok_raw,
+        ipv4_error,
+        ipv6_error,
+    ) in reversed(rows):
+        ipv4_ok = _tri_bool(ipv4_ok_raw)
+        ipv6_ok = _tri_bool(ipv6_ok_raw)
         pings.append(
             {
                 "ts": ts,
@@ -155,6 +243,11 @@ def _recent_pings(target: str, count: int) -> list[dict[str, object]]:
                 "status_code": status_code,
                 "latency_ms": latency_ms,
                 "error": error,
+                "ipv4_ok": ipv4_ok,
+                "ipv6_ok": ipv6_ok,
+                "ipv4_error": ipv4_error,
+                "ipv6_error": ipv6_error,
+                "status_label": _status_label(bool(ok), ipv4_ok, ipv6_ok),
             }
         )
     # Pad on the left so the row always has `count` slots (matches daily bar count).
@@ -167,6 +260,11 @@ def _recent_pings(target: str, count: int) -> list[dict[str, object]]:
             "status_code": None,
             "latency_ms": None,
             "error": None,
+            "ipv4_ok": None,
+            "ipv6_ok": None,
+            "ipv4_error": None,
+            "ipv6_error": None,
+            "status_label": None,
         }
         pings = [dict(empty) for _ in range(missing)] + pings
     return pings
@@ -231,11 +329,17 @@ def component(
 
     if latest is None:
         status = "unknown"
+        status_label = "No data yet"
     else:
         status = "operational" if latest["ok"] else "down"
+        label = latest.get("status_label")
+        status_label = label if isinstance(label, str) else (
+            "Operational" if latest["ok"] else "Down"
+        )
 
     return {
         "status": status,
+        "status_label": status_label,
         "uptime": uptime,
         "recent_uptime": recent_uptime,
         "recent_window_minutes": recent_window_minutes,

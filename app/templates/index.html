@@ -4,7 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ title }}</title>
+<meta name="description" content="{{ meta_description }}">
+{# Intentionally crawlable — no noindex/nofollow. #}
+<meta name="robots" content="{{ robots }}">
+<meta name="googlebot" content="{{ robots }}">
+<link rel="canonical" href="{{ page_url }}">
+{# Authoritative JSON for agents/monitors — prefer this over scraping the UI. #}
+<link rel="alternate" type="application/json" href="{{ api_status_url }}" title="Machine-readable status">
 <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+<meta property="og:type" content="website">
+<meta property="og:title" content="{{ title }}">
+<meta property="og:description" content="{{ meta_description }}">
+<meta property="og:url" content="{{ page_url }}">
+<script type="application/ld+json">{{ json_ld|tojson }}</script>
 <style>
   :root {
     --bg: #f6f7f9;
@@ -41,6 +53,27 @@
   header.page { text-align: center; margin-bottom: 28px; }
   header.page h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; }
   header.page .sub { color: var(--muted); font-size: 13px; }
+  .probe-families {
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: 14px; margin-top: 10px; color: var(--muted); font-size: 12px;
+  }
+  .probe-family {
+    display: inline-flex; align-items: center; gap: 6px;
+    user-select: none;
+  }
+  .probe-family .box {
+    width: 14px; height: 14px; border-radius: 3px;
+    border: 1.5px solid var(--muted);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 10px; line-height: 1; color: transparent;
+    background: transparent;
+  }
+  .probe-family.on .box {
+    border-color: var(--up);
+    background: var(--up);
+    color: #fff;
+  }
+  .probe-family.on { color: var(--text); }
 
   /* Present-moment strip: one block per service, current status only. */
   .now-strip {
@@ -177,7 +210,34 @@
     <header class="page">
       <h1>{{ title }}</h1>
       <div class="sub" id="updated">Loading…</div>
+      <div class="probe-families" id="probe-families" aria-label="Address families probed">
+        <span class="probe-family {% if check_ipv6 %}on{% endif %}" id="probe-ipv6" title="HTTP checks over IPv6">
+          <span class="box" aria-hidden="true">{% if check_ipv6 %}✓{% endif %}</span>
+          IPv6
+        </span>
+        <span class="probe-family {% if check_ipv4 %}on{% endif %}" id="probe-ipv4" title="HTTP checks over IPv4 (needs public IPv4 egress on the host)">
+          <span class="box" aria-hidden="true">{% if check_ipv4 %}✓{% endif %}</span>
+          IPv4
+        </span>
+      </div>
     </header>
+
+    {# Server-rendered snapshot for agents/crawlers that do not run JS. #}
+    <noscript>
+      <p>Overall status: <strong>{{ overall_label }}</strong>
+        ({{ overall }}). Full JSON: <a href="{{ api_status_url }}">{{ api_status_url }}</a>.</p>
+      <ul>
+        {% for c in noscript_components %}
+        <li>
+          <a href="{{ c.url }}">{{ c.name }}</a>:
+          {{ c.status_label }}
+          {% if c.uptime is not none %} — {{ c.uptime }}% uptime ({{ history_days }} days){% endif %}
+        </li>
+        {% else %}
+        <li>No services configured.</li>
+        {% endfor %}
+      </ul>
+    </noscript>
 
     <div class="now-strip" id="now-strip" hidden>
       <div class="label" id="now-label"></div>
@@ -216,6 +276,11 @@ function dayTip(b) {
   return `${b.date}: ${pct}% up (${b.up}/${b.total} checks)`;
 }
 
+function liveLabel(c) {
+  if (c.status_label) return c.status_label;
+  return STATE_TEXT[c.status] || c.status;
+}
+
 function pingTip(p) {
   if (p.state === "none" || p.ts == null) return "No ping yet";
   const d = new Date(p.ts * 1000);
@@ -228,8 +293,15 @@ function pingTip(p) {
     const code = p.status_code != null ? ` HTTP ${p.status_code}` : "";
     return `${stamp}: up${code}${ms}`;
   }
-  const why = p.error || (p.status_code != null ? `HTTP ${p.status_code}` : "down");
+  const why = p.status_label || p.error
+    || (p.status_code != null ? `HTTP ${p.status_code}` : "down");
   return `${stamp}: down · ${why}`;
+}
+
+function setProbeFamily(el, on) {
+  el.classList.toggle("on", !!on);
+  const box = el.querySelector(".box");
+  if (box) box.textContent = on ? "✓" : "";
 }
 
 function formatUptimeLabel(pct) {
@@ -279,7 +351,7 @@ function renderNowStrip(components) {
     : "Current Status";
   row.innerHTML = components.map(c => {
     const cls = nowBlockClass(c.status);
-    const state = STATE_TEXT[c.status] || c.status;
+    const state = liveLabel(c);
     const tip = escapeAttr(`${c.name}: ${state}`);
     const icon = c.icon
       ? `<img class="favicon" src="${c.icon}" alt="" loading="lazy" onerror="this.remove()">`
@@ -301,7 +373,7 @@ function renderComponent(c) {
   const el = document.createElement("div");
   el.className = "component";
 
-  const stateText = STATE_TEXT[c.status] || c.status;
+  const stateText = liveLabel(c);
   const icon = c.icon
     ? `<img class="favicon" src="${c.icon}" alt="" loading="lazy" onerror="this.remove()">`
     : "";
@@ -364,6 +436,8 @@ async function refresh() {
     const data = await res.json();
 
     renderNowStrip(data.components);
+    setProbeFamily(document.getElementById("probe-ipv6"), data.check_ipv6 !== false);
+    setProbeFamily(document.getElementById("probe-ipv4"), !!data.check_ipv4);
 
     const container = document.getElementById("components");
     container.innerHTML = "";

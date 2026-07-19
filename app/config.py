@@ -2,7 +2,7 @@
 
 Everything the monitor needs to know at runtime comes from environment
 variables (populated from a `.env` file via docker-compose's `env_file`).
-The only thing an operator has to set is `TARGETS`.
+The only required operator setting is `TARGETS`.
 """
 
 from __future__ import annotations
@@ -60,6 +60,16 @@ def _int(name: str, default: int) -> int:
         return default
 
 
+def _bool(name: str) -> bool:
+    """Require env var exactly `True` or `False` (KeyError if unset)."""
+    raw = os.environ[name]
+    if raw == "True":
+        return True
+    if raw == "False":
+        return False
+    raise ValueError(f"{name} must be exactly True or False, got {raw!r}")
+
+
 TITLE = os.environ.get("STATUS_TITLE", "Service Status").strip() or "Service Status"
 CHECK_INTERVAL_SECONDS = _int("CHECK_INTERVAL_SECONDS", 60)
 REQUEST_TIMEOUT_SECONDS = _int("REQUEST_TIMEOUT_SECONDS", 10)
@@ -73,6 +83,12 @@ USER_AGENT = os.environ.get(
 ).strip()
 
 TARGETS = _parse_targets(os.environ.get("TARGETS", ""))
+
+# Probe address families. IPv6 is always on. IPv4 needs public IPv4 egress on
+# the host (e.g. an AWS Elastic IP, ~$3.65/mo); set False on IPv6-only EC2.
+# Required: CHECK_IPV4 must be exactly True or False.
+CHECK_IPV6 = True
+CHECK_IPV4 = _bool("CHECK_IPV4")
 
 # Alerting via ntfy.sh: when a target goes down (or recovers), POST a
 # notification to NTFY_URL (a full topic URL, e.g. https://ntfy.sh/my-topic).

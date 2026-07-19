@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import time
-from urllib.parse import quote
+from datetime import datetime, timezone
+from typing import cast
+from urllib.parse import quote, urljoin
 
-from flask import Flask, Response, abort, jsonify, render_template
+from flask import Flask, Response, abort, jsonify, render_template, request
 
 from . import checker, config, favicons, store
 
@@ -14,6 +16,13 @@ app = Flask(__name__)
 store.init(config.DB_PATH)
 checker.start()
 favicons.start()
+
+_STATUS_LABELS = {
+    "operational": "Operational",
+    "down": "Down",
+    "degraded": "Degraded",
+    "unknown": "Unknown",
+}
 
 
 def _overall(components: list[dict[str, object]]) -> str:
@@ -67,19 +76,248 @@ def _build_status() -> dict[str, object]:
         "generated_at": int(time.time()),
         "history_days": config.HISTORY_DAYS,
         "check_interval_seconds": config.CHECK_INTERVAL_SECONDS,
+        "check_ipv4": config.CHECK_IPV4,
+        "check_ipv6": config.CHECK_IPV6,
         "overall": _overall(components),
         "components": components,
     }
 
 
+def _page_url() -> str:
+    """Canonical status-page origin for structured data (trailing slash)."""
+    if config.STATUS_PAGE_URL:
+        return config.STATUS_PAGE_URL.rstrip("/") + "/"
+    return request.url_root
+
+
+def _status_label(code: object) -> str:
+    if isinstance(code, str) and code in _STATUS_LABELS:
+        return _STATUS_LABELS[code]
+    return "Unknown"
+
+
+def _meta_description(status: dict[str, object]) -> str:
+    """One-line summary for search engines / agents that only read <meta>."""
+    overall = _status_label(status.get("overall"))
+    components = status.get("components")
+    n = len(components) if isinstance(components, list) else 0
+    days = status.get("history_days", config.HISTORY_DAYS)
+    return (
+        f"{config.TITLE}: overall {overall}. "
+        f"Monitoring {n} service{'s' if n != 1 else ''} "
+        f"over the last {days} days. "
+        f"Machine-readable JSON at /api/status."
+    )
+
+
+def _json_ld(status: dict[str, object]) -> dict[str, object]:
+    """schema.org WebPage + ItemList so agents need not scrape the JS UI."""
+    page = _page_url()
+    api_url = urljoin(page, "api/status")
+    generated = status.get("generated_at")
+    modified = (
+        datetime.fromtimestamp(int(generated), tz=timezone.utc).isoformat()
+        if isinstance(generated, int)
+        else None
+    )
+    components = status.get("components")
+    items: list[dict[str, object]] = []
+    if isinstance(components, list):
+        for i, raw in enumerate(components, start=1):
+            if not isinstance(raw, dict):
+                continue
+            # Bare isinstance(dict) narrows to dict[Never, Never] under ty.
+            component = cast(dict[str, object], raw)
+            name = component.get("name")
+            url = component.get("url")
+            props: list[dict[str, object]] = [
+                {
+                    "@type": "PropertyValue",
+                    "name": "status",
+                    "value": component.get("status") or "unknown",
+                },
+                {
+                    "@type": "PropertyValue",
+                    "name": "statusLabel",
+                    "value": component.get("status_label")
+                    or _status_label(component.get("status")),
+                },
+            ]
+            uptime = component.get("uptime")
+            if isinstance(uptime, (int, float)):
+                props.append(
+                    {
+                        "@type": "PropertyValue",
+                        "name": "uptimePercent",
+                        "value": uptime,
+                        "unitText": "percent",
+                        "description": f"{config.HISTORY_DAYS}-day uptime",
+                    }
+                )
+            service: dict[str, object] = {
+                "@type": "Service",
+                "name": name if isinstance(name, str) else "service",
+                "additionalProperty": props,
+            }
+            if isinstance(url, str) and url:
+                service["url"] = url
+            items.append(
+                {
+                    "@type": "ListItem",
+                    "position": i,
+                    "item": service,
+                }
+            )
+
+    overall = status.get("overall") or "unknown"
+    doc: dict[str, object] = {
+        "@context": "https://schema.org",
+        "@type": "WebPage",
+        "@id": page,
+        "url": page,
+        "name": config.TITLE,
+        "description": _meta_description(status),
+        "inLanguage": "en",
+        "about": {
+            "@type": "Thing",
+            "name": "Service availability",
+            "description": f"Overall status: {_status_label(overall)}",
+            "additionalProperty": [
+                {
+                    "@type": "PropertyValue",
+                    "name": "overallStatus",
+                    "value": overall,
+                },
+                {
+                    "@type": "PropertyValue",
+                    "name": "checkIntervalSeconds",
+                    "value": status.get("check_interval_seconds"),
+                },
+                {
+                    "@type": "PropertyValue",
+                    "name": "checkIPv4",
+                    "value": bool(status.get("check_ipv4")),
+                },
+                {
+                    "@type": "PropertyValue",
+                    "name": "checkIPv6",
+                    "value": status.get("check_ipv6") is not False,
+                },
+                {
+                    "@type": "PropertyValue",
+                    "name": "historyDays",
+                    "value": status.get("history_days"),
+                },
+            ],
+        },
+        "mainEntity": {
+            "@type": "ItemList",
+            "name": "Monitored services",
+            "numberOfItems": len(items),
+            "itemListElement": items,
+        },
+        "significantLink": api_url,
+        "subjectOf": {
+            "@type": "DataDownload",
+            "name": "CurriePing status API",
+            "description": (
+                "Authoritative machine-readable status (same fields as this page)."
+            ),
+            "encodingFormat": "application/json",
+            "contentUrl": api_url,
+        },
+        "provider": {
+            "@type": "SoftwareApplication",
+            "name": "CurriePing",
+            "softwareVersion": config.VERSION,
+            "url": "https://github.com/MichaelCurrie/CurriePing",
+            "license": "https://unlicense.org/",
+        },
+    }
+    if modified:
+        doc["dateModified"] = modified
+    return doc
+
+
+# Public status surface is meant to be crawled (search engines, AI agents).
+# Never emit noindex/nofollow here.
+_CRAWL_ROBOTS = "index, follow, max-snippet:-1, max-image-preview:large"
+
+
+@app.after_request
+def _crawlable_headers(response: Response) -> Response:
+    # Header wins over missing/conflicting meta for many bots.
+    if "X-Robots-Tag" not in response.headers:
+        response.headers["X-Robots-Tag"] = _CRAWL_ROBOTS
+    return response
+
+
 @app.route("/")
 def index():
+    status = _build_status()
+    components = status.get("components")
+    noscript_rows: list[dict[str, object]] = []
+    if isinstance(components, list):
+        for raw in components:
+            if not isinstance(raw, dict):
+                continue
+            component = cast(dict[str, object], raw)
+            noscript_rows.append(
+                {
+                    "name": component.get("name"),
+                    "url": component.get("url"),
+                    "status": component.get("status"),
+                    "status_label": component.get("status_label")
+                    or _status_label(component.get("status")),
+                    "uptime": component.get("uptime"),
+                }
+            )
     return render_template(
         "index.html",
         title=config.TITLE,
         history_days=config.HISTORY_DAYS,
         version=config.VERSION,
+        check_ipv4=config.CHECK_IPV4,
+        check_ipv6=config.CHECK_IPV6,
+        page_url=_page_url(),
+        api_status_url=urljoin(_page_url(), "api/status"),
+        meta_description=_meta_description(status),
+        robots=_CRAWL_ROBOTS,
+        overall=status.get("overall") or "unknown",
+        overall_label=_status_label(status.get("overall")),
+        generated_at=status.get("generated_at"),
+        json_ld=_json_ld(status),
+        noscript_components=noscript_rows,
     )
+
+
+@app.route("/robots.txt")
+def robots_txt() -> Response:
+    """Explicit allow-all — status pages should be fully crawlable."""
+    page = _page_url()
+    body = (
+        "User-agent: *\n"
+        "Allow: /\n"
+        "\n"
+        f"Sitemap: {urljoin(page, 'sitemap.xml')}\n"
+    )
+    return Response(body, mimetype="text/plain; charset=utf-8")
+
+
+@app.route("/sitemap.xml")
+def sitemap_xml() -> Response:
+    page = _page_url().rstrip("/") + "/"
+    api = urljoin(page, "api/status")
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        f"  <url><loc>{page}</loc><changefreq>always</changefreq>"
+        "<priority>1.0</priority></url>\n"
+        f"  <url><loc>{api}</loc><changefreq>always</changefreq>"
+        "<priority>0.8</priority></url>\n"
+        "</urlset>\n"
+    )
+    return Response(body, mimetype="application/xml; charset=utf-8")
 
 
 @app.route("/api/status")
@@ -108,5 +346,11 @@ def icon(name: str) -> Response:
 @app.route("/healthz")
 def healthz():
     return jsonify(
-        {"ok": True, "version": config.VERSION, "targets": len(config.TARGETS)}
+        {
+            "ok": True,
+            "version": config.VERSION,
+            "targets": len(config.TARGETS),
+            "check_ipv4": config.CHECK_IPV4,
+            "check_ipv6": config.CHECK_IPV6,
+        }
     )

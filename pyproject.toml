@@ -43,7 +43,15 @@ line-ending = "lf"
 paths = ["app"]
 min_confidence = 60
 # Flask registers these via @app.route; vulture cannot see that call graph.
-ignore_names = ["index", "api_status", "icon", "healthz"]
+ignore_names = [
+    "index",
+    "api_status",
+    "icon",
+    "healthz",
+    "robots_txt",
+    "sitemap_xml",
+    "_crawlable_headers",
+]
 # fnmatch per path component — stops a bare `vulture .` from crawling
 # site-packages (CI creates .venv for ty).
 exclude = [".venv", "venv"]
