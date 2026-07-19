@@ -257,7 +257,7 @@
   <div class="wrap">
     <header class="page">
       <h1>{{ title }}</h1>
-      <div class="sub" id="updated">Loading…</div>
+      <div class="sub" id="updated">{{ component_count }} services monitored</div>
       <div class="probe-families" id="probe-families" aria-label="Address families probed (server configuration)">
         <span class="probe-label">Probes</span>
         <span class="probe-chip {% if check_ipv6 %}on{% endif %}" id="probe-ipv6"
@@ -300,7 +300,7 @@
     <div id="components"></div>
 
     <footer>
-      Checks run every <span id="interval">–</span>s over the last {{ history_days }} days.
+      Checks run every <span id="interval">{{ check_interval_seconds }}</span>s over the last {{ history_days }} days.
       <br>Auto-refreshes; last updated <span id="ago">just now</span>.
       <br><a class="powered" href="https://github.com/MichaelCurrie/CurriePing" target="_blank" rel="noopener">Powered by CurriePing v{{ version }}</a>
 
@@ -326,8 +326,12 @@
     </footer>
   </div>
 
+<script type="application/json" id="status-bootstrap">{{ status_bootstrap|tojson }}</script>
 <script>
 const HISTORY_DAYS = {{ history_days }};
+// Bootstrap paints immediately; these URLs are polled for as long as the tab is open.
+const API_STATUS_CANDIDATES = {{ api_status_candidates|tojson }};
+const REFRESH_MS = 30000;
 
 const STATE_TEXT = {
   operational: "Operational",
@@ -571,33 +575,68 @@ function formatUpdated(d) {
   return time + tzLink;
 }
 
+function applyStatus(data) {
+  renderNowStrip(data.components || []);
+  setProbeFamily(document.getElementById("probe-ipv6"), data.check_ipv6 !== false);
+  setProbeFamily(document.getElementById("probe-ipv4"), !!data.check_ipv4);
+
+  const historyDays = data.history_days != null ? data.history_days : HISTORY_DAYS;
+  const container = document.getElementById("components");
+  container.innerHTML = "";
+  (data.components || []).forEach(c => container.appendChild(renderComponent(c, historyDays)));
+
+  document.getElementById("interval").textContent = data.check_interval_seconds;
+  const d = new Date(data.generated_at * 1000);
+  document.getElementById("updated").textContent =
+    (data.components || []).length + " services monitored";
+  lastUpdate = Date.now();
+  document.getElementById("ago").innerHTML = formatUpdated(d);
+}
+
+/** Fetch status JSON; try each candidate (live API + static file) with cache bust. */
+async function fetchStatus() {
+  let lastErr = null;
+  for (const base of API_STATUS_CANDIDATES) {
+    const sep = String(base).includes("?") ? "&" : "?";
+    const url = `${base}${sep}_=${Date.now()}`;
+    try {
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) {
+        lastErr = new Error("status " + res.status);
+        continue;
+      }
+      return await res.json();
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error("no status endpoint");
+}
+
 async function refresh() {
   try {
-    const res = await fetch("/api/status", { cache: "no-store" });
-    const data = await res.json();
-
-    renderNowStrip(data.components);
-    setProbeFamily(document.getElementById("probe-ipv6"), data.check_ipv6 !== false);
-    setProbeFamily(document.getElementById("probe-ipv4"), !!data.check_ipv4);
-
-    const historyDays = data.history_days != null ? data.history_days : HISTORY_DAYS;
-    const container = document.getElementById("components");
-    container.innerHTML = "";
-    data.components.forEach(c => container.appendChild(renderComponent(c, historyDays)));
-
-    document.getElementById("interval").textContent = data.check_interval_seconds;
-    const d = new Date(data.generated_at * 1000);
-    document.getElementById("updated").textContent =
-      data.components.length + " services monitored";
-    lastUpdate = Date.now();
-    document.getElementById("ago").innerHTML = formatUpdated(d);
+    applyStatus(await fetchStatus());
   } catch (e) {
-    document.getElementById("updated").textContent = "Unable to load status";
+    // Keep the last good paint (bootstrap or prior poll); only fail if never loaded.
+    if (lastUpdate == null) {
+      document.getElementById("updated").textContent = "Unable to load status";
+    }
   }
 }
 
+// First paint from embedded snapshot (no Loading… flash), then keep polling
+// so an open tab picks up new check cycles (every ~30s, and on tab focus).
+try {
+  const boot = document.getElementById("status-bootstrap");
+  if (boot && boot.textContent) applyStatus(JSON.parse(boot.textContent));
+} catch (e) {
+  /* fall through to refresh() */
+}
 refresh();
-setInterval(refresh, 30000);
+setInterval(refresh, REFRESH_MS);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") refresh();
+});
 </script>
 </body>
 </html>

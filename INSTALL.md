@@ -330,6 +330,12 @@ sudo docker compose logs -f --tail=100
 
 Skip the tunnel. Publish an **AAAA** to the instance IPv6, keep SG 80/443 open on `::/0`, set `STATUS_DOMAIN` for Caddy/Let’s Encrypt, leave `COMPOSE_PROFILES` empty. IPv4-only clients cannot open the page. Do **not** add a NAT Gateway just for IPv4 visitors — the tunnel is cheaper. Keep `CHECK_IPV4=False` unless you also attach a public IPv4 for probes.
 
+### Static site export (write-to-disk)
+
+After every check cycle the app rewrites a complete static tree next to the DB (`/data/www` when using the default `STATUS_DB_PATH`): `index.html`, `api/status.json`, `icon/…`, `robots.txt`, `sitemap.xml`. You can point Nginx/Caddy/Apache (or a tunnel origin) at that directory instead of `app:8080`; keep the `app` container running so it continues probing and refreshing the files.
+
+The exported `index.html` embeds the latest status JSON so the first paint has no “Loading…” wait; bots also get noscript + JSON-LD in the same file. An open browser tab still polls `api/status.json` (and `/api/status` if Flask is on the same origin) every 30s so later check cycles show up without a full reload.
+
 -----
 
 **Why tunnel:** AWS bills every public IPv4 (~$3.65/month). Auto-assigned (non-Elastic) IPv4 costs the same. Cloudflare Tunnel gives IPv4+IPv6 *visitors* with no public address on the VM. Outbound IPv4 *probes* still need a public IPv4 (or NAT) on the monitor host — set `CHECK_IPV4=True` and attach an Elastic IP only if you want that; otherwise leave `CHECK_IPV4=False` and monitor IPv6 paths only.

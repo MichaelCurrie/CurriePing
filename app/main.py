@@ -7,15 +7,13 @@ from datetime import datetime, timezone
 from typing import cast
 from urllib.parse import quote, urljoin
 
-from flask import Flask, Response, abort, jsonify, render_template, request
+from flask import Flask, Response, abort, has_request_context, jsonify, render_template, request
 
-from . import checker, config, favicons, store
+from . import checker, config, export, favicons, store
 
 app = Flask(__name__)
 
 store.init(config.DB_PATH)
-checker.start()
-favicons.start()
 
 _STATUS_LABELS = {
     "operational": "Operational",
@@ -92,7 +90,33 @@ def _page_url() -> str:
     """Canonical status-page origin for structured data (trailing slash)."""
     if config.STATUS_PAGE_URL:
         return config.STATUS_PAGE_URL.rstrip("/") + "/"
-    return request.url_root
+    if has_request_context():
+        return request.url_root
+    # Static export / no request: relative root so the snapshot is relocatable.
+    return "/"
+
+
+def _api_status_url() -> str:
+    """Primary JSON URL advertised to agents / <link rel=alternate>."""
+    # Offline/static render advertises the on-disk file; live requests use Flask.
+    if not has_request_context():
+        return urljoin(_page_url(), "api/status.json")
+    return urljoin(_page_url(), "api/status")
+
+
+def _api_status_candidates() -> list[str]:
+    """URLs the open page polls for live updates (first success wins).
+
+    Bootstrap is first paint only — the tab keeps fetching so status stays
+    current after later check cycles. Prefer the live API when serving from
+    Flask; static snapshots try status.json first, then /api/status.
+    """
+    page = _page_url()
+    live = urljoin(page, "api/status")
+    static = urljoin(page, "api/status.json")
+    if not has_request_context():
+        return [static, live]
+    return [live, static]
 
 
 def _status_label(code: object) -> str:
@@ -111,14 +135,14 @@ def _meta_description(status: dict[str, object]) -> str:
         f"{config.TITLE}: overall {overall}. "
         f"Monitoring {n} service{'s' if n != 1 else ''} "
         f"over the last {days} days. "
-        f"Machine-readable JSON at /api/status."
+        f"Machine-readable JSON at {_api_status_url()}."
     )
 
 
 def _json_ld(status: dict[str, object]) -> dict[str, object]:
     """schema.org WebPage + ItemList so agents need not scrape the JS UI."""
     page = _page_url()
-    api_url = urljoin(page, "api/status")
+    api_url = _api_status_url()
     generated = status.get("generated_at")
     modified = (
         datetime.fromtimestamp(int(generated), tz=timezone.utc).isoformat()
@@ -257,26 +281,31 @@ def _crawlable_headers(response: Response) -> Response:
     return response
 
 
-@app.route("/")
-def index():
-    status = _build_status()
+def _noscript_rows(status: dict[str, object]) -> list[dict[str, object]]:
     components = status.get("components")
-    noscript_rows: list[dict[str, object]] = []
-    if isinstance(components, list):
-        for raw in components:
-            if not isinstance(raw, dict):
-                continue
-            component = cast(dict[str, object], raw)
-            noscript_rows.append(
-                {
-                    "name": component.get("name"),
-                    "url": component.get("url"),
-                    "status": component.get("status"),
-                    "status_label": component.get("status_label")
-                    or _status_label(component.get("status")),
-                    "uptime": component.get("uptime"),
-                }
-            )
+    rows: list[dict[str, object]] = []
+    if not isinstance(components, list):
+        return rows
+    for raw in components:
+        if not isinstance(raw, dict):
+            continue
+        component = cast(dict[str, object], raw)
+        rows.append(
+            {
+                "name": component.get("name"),
+                "url": component.get("url"),
+                "status": component.get("status"),
+                "status_label": component.get("status_label")
+                or _status_label(component.get("status")),
+                "uptime": component.get("uptime"),
+            }
+        )
+    return rows
+
+
+def _render_index(status: dict[str, object]) -> str:
+    """Render the status page HTML for a live response or static export."""
+    noscript_rows = _noscript_rows(status)
     return render_template(
         "index.html",
         title=config.TITLE,
@@ -284,8 +313,10 @@ def index():
         version=config.VERSION,
         check_ipv4=config.CHECK_IPV4,
         check_ipv6=config.CHECK_IPV6,
+        check_interval_seconds=config.CHECK_INTERVAL_SECONDS,
         page_url=_page_url(),
-        api_status_url=urljoin(_page_url(), "api/status"),
+        api_status_url=_api_status_url(),
+        api_status_candidates=_api_status_candidates(),
         meta_description=_meta_description(status),
         robots=_CRAWL_ROBOTS,
         overall=status.get("overall") or "unknown",
@@ -293,7 +324,22 @@ def index():
         generated_at=status.get("generated_at"),
         json_ld=_json_ld(status),
         noscript_components=noscript_rows,
+        status_bootstrap=status,
+        component_count=len(noscript_rows),
     )
+
+
+def _export_static() -> None:
+    """Write a complete static snapshot under config.EXPORT_DIR."""
+    with app.app_context():
+        status = _build_status()
+        html = _render_index(status)
+        export.write(status, html)
+
+
+@app.route("/")
+def index():
+    return _render_index(_build_status())
 
 
 @app.route("/robots.txt")
@@ -321,7 +367,9 @@ def sitemap_xml() -> Response:
 
 
 @app.route("/api/status")
+@app.route("/api/status.json")
 def api_status():
+    # status.json alias keeps exported pages polling when Flask is still origin.
     return jsonify(_build_status())
 
 
@@ -354,3 +402,14 @@ def healthz():
             "check_ipv6": config.CHECK_IPV6,
         }
     )
+
+
+# Register export before starting the checker so the first cycle cannot miss it.
+checker.set_after_cycle(_export_static)
+checker.start()
+favicons.start()
+# Populate EXPORT_DIR before the first check finishes (empty history is fine).
+try:
+    _export_static()
+except Exception:
+    pass

@@ -20,6 +20,7 @@ from __future__ import annotations
 import socket
 import threading
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from urllib.parse import urlparse
@@ -31,6 +32,8 @@ from . import alerts, config, store
 
 _started = False
 _lock = threading.Lock()
+# Optional hook (e.g. static HTML export) run once per cycle after records/alerts.
+_after_cycle: Callable[[], None] | None = None
 
 # Per-thread address-family pin for urllib3's getaddrinfo. Thread-local so the
 # check pool can probe IPv4 and IPv6 concurrently without races.
@@ -329,8 +332,19 @@ def _run() -> None:
             store.prune(config.HISTORY_DAYS + 1)
         except Exception:
             pass  # pruning is best-effort; never kill the loop over it
+        if _after_cycle is not None:
+            try:
+                _after_cycle()
+            except Exception:
+                pass  # export/hooks must never kill the check loop
         elapsed = time.monotonic() - cycle_start
         time.sleep(max(1.0, config.CHECK_INTERVAL_SECONDS - elapsed))
+
+
+def set_after_cycle(callback: Callable[[], None] | None) -> None:
+    """Register a zero-arg callback invoked after each check cycle completes."""
+    global _after_cycle
+    _after_cycle = callback
 
 
 def start() -> None:

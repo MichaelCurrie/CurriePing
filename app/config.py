@@ -103,6 +103,9 @@ HISTORY_DAYS = max(1, min(_int("HISTORY_DAYS", 90), 365))
 DB_PATH = (
     os.environ.get("STATUS_DB_PATH", "/data/status.db").strip() or "/data/status.db"
 )
+# Always rewrite a static status tree here after each check cycle (index.html,
+# api/status.json, icons). Sibling of the DB so the Docker /data volume covers it.
+EXPORT_DIR = str(Path(DB_PATH).expanduser().parent / "www")
 USER_AGENT = os.environ.get(
     "STATUS_USER_AGENT",
     "status-monitor/1.0 (+https://github.com)",
