@@ -23,7 +23,7 @@ https://status.michaelcurrie.com
 | [Uptime Kuma](https://github.com/louislam/uptime-kuma) | **$0** | unlimited | ~1 GB RAM → `t4g.micro` ~ **$6*** |
 | **CurriePing** | **$0** | **unlimited** | 0.5 GB RAM → `t4g.nano` ~ **$3*** |
 
-* IPv6-only; skip the ~$3.65 AWS public IPv4 fee
+* No AWS public IPv4 (~$3.65/mo). Production uses [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) so IPv4 browsers still work.
 
 ## How to Deploy - via one-shot LLM prompt
 
@@ -45,7 +45,7 @@ Paste into an LLM agent (Claude Code, etc.):
 > 
 > 4. Confirm the `aws` CLI is installed and authenticated. If not, stop and help me install it.
 > 
-> 5. Ask where DNS for `STATUS_DOMAIN` is hosted (OpenSRS, Route53, Cloudflare DNS, etc.). The deploy is **IPv6-only**: they will create an **AAAA** record (and should remove any **A** record). Confirm their network can use IPv6 for SSH and for viewing the status page.
+> 5. Confirm they have a Cloudflare account. Help them create a Cloudflare Tunnel (Zero Trust → Networks → Tunnels) with public hostname `STATUS_DOMAIN` → `http://app:8080`, and copy the tunnel token into `CLOUDFLARE_TUNNEL_TOKEN`. DNS should be a CNAME to `<tunnel-id>.cfargotunnel.com` (or Cloudflare-managed if the zone is on Cloudflare) — not an A/AAAA to the EC2 address.
 > 
 > 6. Follow [INSTALL.md](https://github.com/MichaelCurrie/CurriePing/blob/main/INSTALL.md) to deploy.
 
@@ -53,14 +53,15 @@ Paste into an LLM agent (Claude Code, etc.):
 
 ### How it runs
 
-Everything runs in Docker Compose — two containers on a private network:
+Docker Compose services:
 
 | Service | Role |
 |---|---|
 | `app` | Python CurriePing process (probes sites, SQLite history, status page on `:8080` inside the network) |
-| `proxy` | [Caddy](https://caddyserver.com) — public `:80`/`:443`, TLS via Let's Encrypt, reverse-proxies to `app` |
+| `proxy` | Optional [Caddy](https://caddyserver.com) on host `:80`/`:443` (local/dev or direct IPv6) |
+| `tunnel` | Optional `cloudflared` (profile `tunnel`) — Cloudflare Tunnel to `app:8080` for public IPv4+IPv6 without a public AWS IPv4 |
 
-Production AWS install is **IPv6-only** (AAAA DNS, no Elastic/public IPv4) so the address fee does not dwarf the `t4g.nano`. See [INSTALL.md](INSTALL.md).
+See [INSTALL.md](INSTALL.md).
 
 ## License
 

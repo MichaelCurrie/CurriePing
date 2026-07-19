@@ -1,25 +1,25 @@
-# CurriePing stack — two containers on a private Docker network.
+# CurriePing stack — containers on a private Docker network.
 #
 # Layout:
 #   app/     Python service (Dockerfile, requirements, source)
 #   proxy/   Caddy reverse-proxy config (Caddyfile)
 #
-#   app    The Python uptime monitor (Flask + waitress). Probes TARGETS on an
-#          interval, writes history to SQLite under /data, serves the status
-#          page and /api/status on :8080. Not published to the host; only the
-#          proxy can reach it.
+#   app      Uptime monitor (Flask + waitress). Probes TARGETS, SQLite under
+#            /data, status page on :8080. Not published to the host.
 #
-#   proxy  Caddy reverse proxy. The only thing bound to the host (:80 / :443).
-#          Terminates TLS (Let's Encrypt when STATUS_DOMAIN is a hostname) and
-#          forwards HTTP to app:8080. When STATUS_DOMAIN is blank it serves
-#          plain HTTP on :80 for local testing.
+#   proxy    Optional direct publish of :80/:443 (Caddy + Let's Encrypt when
+#            STATUS_DOMAIN is set). Useful for local/dev or raw IPv6 AAAA.
 #
-# IPv6: the default network is dual-stack so the compose network itself can
-# carry v6. Host publish of :80/:443 on IPv6 still requires the Docker daemon
-# ipv6/ip6tables settings (see scripts/enable-docker-ipv6.sh / INSTALL.md).
+#   tunnel   Optional Cloudflare Tunnel (compose profile `tunnel`). Outbound
+#            only — no public IP needed. Cloudflare terminates visitor TLS and
+#            forwards to app:8080. Enable with COMPOSE_PROFILES=tunnel and a
+#            CLOUDFLARE_TUNNEL_TOKEN (see INSTALL.md).
+#
+# IPv6: the default network is dual-stack. Host publish of :80/:443 on IPv6
+# still needs Docker daemon ipv6/ip6tables (scripts/enable-docker-ipv6.sh).
 #
 # Local / host usage:
-#   cp .env.example .env   # edit TARGETS (+ STATUS_DOMAIN for HTTPS)
+#   cp .env.example .env   # edit TARGETS (+ tunnel token for production)
 #   docker compose up -d --build --remove-orphans
 
 services:
@@ -57,13 +57,35 @@ services:
     depends_on:
       - app
 
+  # Visitors → Cloudflare (IPv4+IPv6) → this connector → app:8080.
+  # No inbound ports required on the EC2 security group for HTTP/S.
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    # Prefer IPv6 edges + HTTP/2 so an IPv6-only EC2 host (no public IPv4 /
+    # no NAT64) can still reach Cloudflare. QUIC-to-IPv4 edges will hang.
+    command:
+      - tunnel
+      - --no-autoupdate
+      - --edge-ip-version
+      - "6"
+      - --protocol
+      - http2
+      - run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      app:
+        condition: service_healthy
+
 networks:
   default:
     enable_ipv6: true
     ipam:
       config:
-        - subnet: 172.28.0.0/16
-        - subnet: fd00:dead:beef:2::/64
+        - subnet: "172.28.0.0/16"
+        - subnet: "fd00:dead:beef:2::/64"
 
 volumes:
   status-data:
