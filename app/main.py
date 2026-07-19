@@ -7,7 +7,15 @@ from datetime import datetime, timezone
 from typing import cast
 from urllib.parse import quote, urljoin
 
-from flask import Flask, Response, abort, has_request_context, jsonify, render_template, request
+from flask import (
+    Flask,
+    Response,
+    abort,
+    has_request_context,
+    jsonify,
+    render_template,
+    request,
+)
 
 from . import checker, config, export, favicons, store
 

@@ -57,9 +57,7 @@ def write(status: dict[str, object], html: str | bytes) -> None:
         ),
     )
 
-    page = (
-        config.STATUS_PAGE_URL.rstrip("/") + "/" if config.STATUS_PAGE_URL else "/"
-    )
+    page = config.STATUS_PAGE_URL.rstrip("/") + "/" if config.STATUS_PAGE_URL else "/"
     _atomic_write(
         root / "robots.txt",
         f"User-agent: *\nAllow: /\n\nSitemap: {page}sitemap.xml\n".encode("utf-8"),
