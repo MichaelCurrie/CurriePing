@@ -44,16 +44,26 @@
   * { box-sizing: border-box; }
   body {
     margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    /* Status-monitor stack: monospace first so the page reads like a console. */
+    font-family: ui-monospace, "Cascadia Code", "Cascadia Mono", "SF Mono",
+      Menlo, Consolas, "Liberation Mono", monospace;
     background: var(--bg);
     color: var(--text);
     line-height: 1.5;
+    letter-spacing: -0.01em;
     -webkit-font-smoothing: antialiased;
   }
-  .wrap { max-width: 860px; margin: 0 auto; padding: 40px 20px 80px; }
+  .wrap {
+    max-width: 860px; margin: 0 auto; padding: 40px 20px 80px;
+    /* Long machine-API URLs must scroll inside their box, not widen the page. */
+    overflow-x: clip; min-width: 0;
+  }
   header.page { text-align: center; margin-bottom: 28px; }
-  header.page h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; }
-  header.page .sub { color: var(--muted); font-size: 13px; }
+  header.page h1 {
+    font-size: 20px; font-weight: 600; margin: 0 0 4px;
+    letter-spacing: 0.02em; text-transform: uppercase;
+  }
+  header.page .sub { color: var(--muted); font-size: 12px; }
   /* Read-only server config — not form controls (set via CHECK_IPV4 / CHECK_IPV6). */
   .probe-families {
     display: inline-flex; align-items: center; justify-content: center;
@@ -141,12 +151,17 @@
     35% { transform: scale(1.06); }
     100% { transform: scale(1); }
   }
+  /* Fixed 1:1 tiles — every cell is the same size on every row (no flex grow
+     on a short last row). */
   .now-blocks {
-    display: flex; flex-wrap: wrap; gap: 6px; align-items: stretch;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, 44px);
+    gap: 6px;
+    justify-content: start;
   }
   .now-block {
-    flex: 1 1 48px; min-width: 36px; max-width: 80px;
-    height: 36px; border-radius: 4px;
+    width: 44px; height: 44px; aspect-ratio: 1 / 1;
+    border-radius: 4px;
     background: transparent;
     border: 3px solid var(--none);
     display: flex; align-items: center; justify-content: center;
@@ -290,31 +305,50 @@
   }
   .summaries strong { color: var(--text); font-weight: 600; }
 
-  footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 26px; }
-  footer .powered { display: inline-block; margin-top: 8px; color: var(--muted); text-decoration: none; }
+  footer {
+    text-align: center; color: var(--muted); font-size: 12px; margin-top: 26px;
+    min-width: 0;
+  }
+  footer .footer-rule {
+    border: none; border-top: 1px solid var(--border);
+    margin: 18px auto 14px; max-width: 12rem;
+  }
+  footer .powered {
+    display: inline-block; color: var(--muted); text-decoration: none;
+  }
   footer .powered:hover { text-decoration: underline; }
   footer .machine {
-    margin-top: 18px; padding-top: 16px;
-    border-top: 1px solid var(--border);
-    text-align: left; max-width: 36rem; margin-left: auto; margin-right: auto;
-    line-height: 1.45;
+    text-align: left; width: 100%; max-width: 36rem;
+    margin: 0 auto; line-height: 1.45; min-width: 0;
   }
+  footer .machine > summary {
+    cursor: pointer; list-style: none;
+    color: var(--muted); font-size: 12px; user-select: none;
+  }
+  footer .machine > summary::-webkit-details-marker { display: none; }
+  footer .machine > summary::before {
+    content: "▸ "; color: var(--muted);
+  }
+  footer .machine[open] > summary::before { content: "▾ "; }
+  footer .machine > summary:hover { color: var(--text); }
+  footer .machine-body { margin-top: 10px; min-width: 0; }
   footer .machine h2 {
     margin: 0 0 6px; font-size: 12px; font-weight: 600; color: var(--text);
   }
-  footer .machine p { margin: 0 0 8px; }
+  footer .machine p { margin: 0 0 8px; overflow-wrap: anywhere; }
   footer .machine code,
+  footer .machine .curl { font-size: 11px; }
   footer .machine .curl {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 11px;
-  }
-  footer .machine .curl {
-    display: block; overflow-x: auto; white-space: nowrap;
+    display: block; max-width: 100%;
+    overflow-x: auto; overflow-wrap: anywhere; white-space: pre-wrap;
     background: var(--bg); border: 1px solid var(--border);
     border-radius: 6px; padding: 8px 10px; margin: 0 0 8px;
     color: var(--text);
   }
-  footer .machine a { color: var(--muted); text-decoration: underline; }
+  footer .machine a {
+    color: var(--muted); text-decoration: underline;
+    overflow-wrap: anywhere;
+  }
   footer .machine a:hover { color: var(--text); }
   /* Timezone abbr → Wikidata: visible but quieter than default link blue. */
   a.tz-link {
@@ -380,29 +414,30 @@
     <div id="components"></div>
 
     <footer>
-      Checks run every <span id="interval">{{ check_interval_seconds }}</span>s over the last {{ history_days }} days.
-      <br>Auto-refreshes; last updated <span id="ago">just now</span>.
-      <br><a class="powered" href="https://github.com/MichaelCurrie/CurriePing" target="_blank" rel="noopener">Powered by CurriePing v{{ version }}</a>
-
-      <div class="machine">
-        <h2>Machine-readable status</h2>
-        <p>
-          Prefer the JSON API over scraping this page.
-          <code>GET</code>
-          <a href="{{ api_status_url }}">{{ api_status_url }}</a>
-          returns overall status, per-service state, uptime, and recent checks
-          as compact <code>application/json</code> (no auth).
-        </p>
-        <code class="curl">curl -sS "{{ api_status_url }}"</code>
-        <p>
-          This HTML also embeds
-          <a href="https://json-ld.org/">JSON-LD</a>
-          (<code>application/ld+json</code> in <code>&lt;head&gt;</code>)
-          and advertises the API via
-          <code>&lt;link rel="alternate" type="application/json"&gt;</code>.
-          Crawlers are welcome — see <a href="/robots.txt">/robots.txt</a>.
-        </p>
-      </div>
+      <details class="machine">
+        <summary>For machines: …</summary>
+        <div class="machine-body">
+          <h2>Machine-readable status</h2>
+          <p>
+            Prefer the JSON API over scraping this page.
+            <code>GET</code>
+            <a href="{{ api_status_url }}">{{ api_status_url }}</a>
+            returns overall status, per-service state, uptime, and recent checks
+            as compact <code>application/json</code> (no auth).
+          </p>
+          <code class="curl">curl -sS "{{ api_status_url }}"</code>
+          <p>
+            This HTML also embeds
+            <a href="https://json-ld.org/">JSON-LD</a>
+            (<code>application/ld+json</code> in <code>&lt;head&gt;</code>)
+            and advertises the API via
+            <code>&lt;link rel="alternate" type="application/json"&gt;</code>.
+            Crawlers are welcome — see <a href="/robots.txt">/robots.txt</a>.
+          </p>
+        </div>
+      </details>
+      <hr class="footer-rule" aria-hidden="true">
+      <a class="powered" href="https://github.com/MichaelCurrie/CurriePing" target="_blank" rel="noopener">Powered by CurriePing v{{ version }}</a>
     </footer>
   </div>
 
@@ -782,12 +817,9 @@ function applyStatus(data) {
   prevRecentTsByName = nextRecent;
   if (pingArrived) dueRefreshArmed = false;
 
-  document.getElementById("interval").textContent = data.check_interval_seconds;
-  const d = new Date(data.generated_at * 1000);
   document.getElementById("updated").textContent =
     components.length + " services monitored";
   lastUpdate = Date.now();
-  document.getElementById("ago").innerHTML = formatUpdated(d);
 }
 
 /** Fetch status JSON; try each candidate (live API + static file) with cache bust. */
