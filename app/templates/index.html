@@ -201,7 +201,9 @@
     grid-template-columns: repeat(var(--slots, 90), minmax(0, 1fr));
     gap: 2px; height: 34px;
   }
-  .bars.recent { height: 22px; margin-top: 10px; overflow: hidden; }
+  /* overflow only while sliding — permanent hidden clips CSS hover tips above bars */
+  .bars.recent { height: 22px; margin-top: 10px; }
+  .bars.recent.has-new { overflow: hidden; }
   .bar {
     border-radius: 2px; background: var(--none); min-width: 0;
     position: relative; cursor: default;
@@ -712,6 +714,15 @@ function renderComponent(c, historyDays, { animateRecent = false } = {}) {
       <span><strong>${dayUptime}</strong> uptime · ${days} days</span>
       <span><strong>${recentUptime}</strong> uptime · past ${windowLabel}</span>
     </div>`;
+  // Drop has-new after the slide so overflow:hidden does not keep clipping tips.
+  if (animateRecent && !reduceMotion) {
+    const recentRow = el.querySelector(".bars.recent");
+    recentRow?.querySelector(".bar:last-child")?.addEventListener(
+      "animationend",
+      () => recentRow.classList.remove("has-new"),
+      { once: true },
+    );
+  }
   return el;
 }
 
