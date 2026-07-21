@@ -6,6 +6,8 @@
 
 A tiny self-hosted uptime monitor in the style of [Atlassian Statuspage](https://status.claude.com). It **pings your sites** on an interval and stores results in SQLite. It sends alerts to your phone or email via [https://ntfy.sh/](ntfy.sh).
 
+It pings your sites separately over IPv4 and IPv6 to confirm your sites are IPv6-compatible and not stuck in the stone age.
+
 ## Example
 
 https://status.michaelcurrie.com
