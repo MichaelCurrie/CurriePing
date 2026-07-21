@@ -6,6 +6,8 @@ content-type in SQLite. The status JSON points browsers at same-origin
 `EXPORT_DIR/icon/` for Caddy. Clients never fetch icons from the targets.
 
 A daemon thread sweeps the cache and re-fetches hourly (and once at startup).
+Successful writes can trigger a static re-export so new icons appear without
+waiting for the next uptime check cycle.
 
 Resolution order per site, first hit wins:
   1. <link rel="...icon..."> declared in the page HTML
@@ -18,6 +20,7 @@ from __future__ import annotations
 import re
 import threading
 import time
+from collections.abc import Callable
 from urllib.parse import quote, urljoin, urlparse
 
 import requests
@@ -165,15 +168,31 @@ def fetch_favicon(url: str) -> tuple[bytes, str] | None:
     return None
 
 
+_after_save: Callable[[], None] | None = None
+
+
+def set_after_save(callback: Callable[[], None] | None) -> None:
+    """Register a zero-arg callback invoked after any favicon is newly written."""
+    global _after_save
+    _after_save = callback
+
+
 def refresh_all() -> None:
     # Update per target only after a successful fetch. Do not wipe the table
     # first — on IPv6-only hosts many icon URLs fail, and a full clear would
     # blank every favicon until the next lucky sweep.
+    saved = 0
     for target in config.TARGETS:
         result = fetch_favicon(target.url)
         if result:
             data, ctype = result
             store.save_favicon(target.name, data, ctype)
+            saved += 1
+    if saved and _after_save is not None:
+        try:
+            _after_save()
+        except Exception:
+            pass  # export/hooks must never kill the favicon loop
 
 
 def _run() -> None:

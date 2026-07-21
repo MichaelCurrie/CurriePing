@@ -177,6 +177,12 @@
     width: 18px; height: 18px;
     object-fit: contain;
   }
+  .now-block .favicon-missing {
+    width: 18px; height: 18px;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: #e23d3d; font-size: 14px; font-weight: 700; line-height: 1;
+    user-select: none;
+  }
 
   .component {
     background: var(--card);
@@ -194,6 +200,12 @@
   .component .favicon {
     width: 16px; height: 16px; border-radius: 3px;
     vertical-align: -3px; margin-right: 8px; object-fit: contain;
+  }
+  .component .favicon-missing {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 16px; height: 16px; margin-right: 8px; vertical-align: -3px;
+    color: #e23d3d; font-size: 13px; font-weight: 700; line-height: 1;
+    user-select: none;
   }
   /* Member hosts in a multi-URL group (www / redirect aliases). */
   .component .aliases {
@@ -667,10 +679,7 @@ function renderNowStrip(components, { pingArrived = false } = {}) {
     const cls = nowBlockClass(c.status);
     const state = liveLabel(c);
     const tip = escapeAttr(`${c.name}: ${state}`);
-    const icon = c.icon
-      ? `<img class="favicon" src="${c.icon}" alt="" loading="lazy" onerror="this.remove()">`
-      : "";
-    return `<a class="now-block ${cls}" href="${c.url}" target="_blank" rel="noopener" data-tip="${tip}" aria-label="${escapeAttr(c.name)}">${icon}</a>`;
+    return `<a class="now-block ${cls}" href="${c.url}" target="_blank" rel="noopener" data-tip="${tip}" aria-label="${escapeAttr(c.name)}">${faviconHtml(c)}</a>`;
   }).join("");
   updateLiveClocks(Date.now());
   if (pingArrived) flashPingArrival();
@@ -697,6 +706,23 @@ function urlHost(url) {
   } catch {
     return String(url || "").replace(/^https?:\/\//, "").split("/")[0];
   }
+}
+
+/** Red "?" placeholder when the monitor has no usable cached favicon. */
+function missingFaviconEl() {
+  const s = document.createElement("span");
+  s.className = "favicon-missing";
+  s.textContent = "?";
+  s.title = "Favicon missing";
+  return s;
+}
+
+/** Same-origin favicon img, or a red "?" when the monitor has no cached icon. */
+function faviconHtml(c) {
+  if (c.icon) {
+    return `<img class="favicon" src="${c.icon}" alt="" loading="lazy" onerror="this.replaceWith(missingFaviconEl())">`;
+  }
+  return `<span class="favicon-missing" title="Favicon missing">?</span>`;
 }
 
 /** Linked host list for multi-URL groups (empty string when only one URL). */
@@ -728,9 +754,7 @@ function renderComponent(c, historyDays, { animateRecent = false } = {}) {
   const days = Math.max(1, Number(historyDays) || HISTORY_DAYS);
 
   const stateText = liveLabel(c);
-  const icon = c.icon
-    ? `<img class="favicon" src="${c.icon}" alt="" loading="lazy" onerror="this.remove()">`
-    : "";
+  const icon = faviconHtml(c);
 
   const dayBars = expandBuckets(c.buckets, days).map(b =>
     `<div class="bar ${barClass(b.state)}" data-tip="${escapeAttr(dayTip(b))}"></div>`

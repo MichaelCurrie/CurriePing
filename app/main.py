@@ -411,6 +411,9 @@ def healthz():
 
 # Register export before starting the checker so the first cycle cannot miss it.
 checker.set_after_cycle(_export_static)
+# Re-bake status + /icon/* as soon as a missing favicon lands (do not wait
+# for the next uptime check cycle).
+favicons.set_after_save(_export_static)
 checker.start()
 favicons.start()
 # Populate EXPORT_DIR before the first check finishes (empty history is fine).
