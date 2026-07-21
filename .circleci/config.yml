@@ -80,7 +80,7 @@ jobs:
           name: Check YAML
           command: |
             set -euo pipefail
-            python - <<'PY'
+            python - \<<'PY'
             import sys
             from pathlib import Path
 
