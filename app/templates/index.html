@@ -55,8 +55,9 @@
   }
   .wrap {
     max-width: 860px; margin: 0 auto; padding: 40px 20px 80px;
-    /* Long machine-API URLs must scroll inside their box, not widen the page. */
-    overflow-x: clip; min-width: 0;
+    /* Do not clip here — CSS hover tips on edge bars / now-blocks extend past
+       their cells. Long API URLs scroll inside footer .curl instead. */
+    min-width: 0;
   }
   header.page { text-align: center; margin-bottom: 28px; }
   header.page h1 {
@@ -93,7 +94,9 @@
   }
   .probe-chip .state-text { font-weight: 500; }
 
-  /* Present-moment strip: one block per service, current status only. */
+  /* Present-moment strip: one block per service, current status only.
+     overflow stays visible so edge-tile hover tips are not clipped; the fuse
+     track clips its own fill. */
   .now-strip {
     background: var(--card);
     border: 1px solid var(--border);
@@ -101,7 +104,6 @@
     padding: 14px 16px 12px;
     margin-bottom: 28px;
     position: relative;
-    overflow: hidden;
   }
   .now-strip .label-row {
     display: flex; align-items: baseline; justify-content: space-between;
@@ -272,6 +274,16 @@
     transform: translateX(-50%);
     border: 6px solid transparent; border-top-color: #111827;
     pointer-events: none; opacity: 0; z-index: 5;
+  }
+  /* First/last cells: grow the bubble inward so it stays on-screen; arrow
+     stays centered on the hovered cell. */
+  .bars .bar:first-child[data-tip]::after,
+  .now-blocks .now-block:first-child[data-tip]::after {
+    left: 0; transform: none;
+  }
+  .bars .bar:last-child[data-tip]::after,
+  .now-blocks .now-block:last-child[data-tip]::after {
+    left: auto; right: 0; transform: none;
   }
   .bar[data-tip]:hover::after,
   .bar[data-tip]:hover::before,
