@@ -52,6 +52,11 @@
     line-height: 1.5;
     letter-spacing: -0.01em;
     -webkit-font-smoothing: antialiased;
+    /* Hover-tip pseudo-elements (::after/::before) are always laid out — they are
+       only opacity:0, not display:none — so nowrap tips on bars near the right edge
+       expand the page's scroll width and create phantom horizontal scroll on narrow
+       screens. Clip the x-axis only; tips sit above their cells, so y stays visible. */
+    overflow-x: clip;
   }
   .wrap {
     max-width: 860px; margin: 0 auto; padding: 40px 20px 80px;
