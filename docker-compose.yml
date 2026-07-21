@@ -117,4 +117,4 @@ volumes:
   caddy-data:
     name: currieping_caddy-data
   caddy-config:
-    name: currieping_caddy-config:
+    name: currieping_caddy-config
