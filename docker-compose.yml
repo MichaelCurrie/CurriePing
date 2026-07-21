@@ -25,6 +25,11 @@
 # Local / host usage:
 #   cp .env.example .env   # edit TARGETS (+ tunnel token for production)
 #   docker compose up -d --build --remove-orphans
+#
+# Explicit project/volume names so the SQLite volume stays stable regardless of
+# the host checkout path.
+
+name: currieping
 
 services:
   monitor:
@@ -108,5 +113,8 @@ networks:
 
 volumes:
   status-data:
+    name: currieping_status-data
   caddy-data:
+    name: currieping_caddy-data
   caddy-config:
+    name: currieping_caddy-config:

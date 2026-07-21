@@ -247,24 +247,49 @@ docker compose -f /opt/currieping/docker-compose.yml ps   # on the host: monitor
 # On the status page header: IPv6 should be checked; IPv4 only if CHECK_IPV4=True.
 ```
 
-SSH:
+### Day-2 ops (SSH, `.env`, pull / rebuild)
+
+Install path is `/opt/currieping`. Config (including `TARGETS`) is **`/opt/currieping/.env`**. History and favicons live in the Docker named volume `currieping_status-data` (mounted at `/data` in `monitor` / `app`), not under the git tree. Compose pins the project and volume names in `docker-compose.yml` so the DB path does not depend on the host checkout directory.
+
+**SSH** (IPv6-only host via a dual-stack jump — replace key / jump / IPv6 as needed):
 
 ```bash
-# Always available over IPv6 (laptop needs IPv6), or jump through another host:
+# Direct IPv6 (laptop must have working IPv6):
 ssh -6 -i /path/to/key.pem ubuntu@$IPV6
 
-# IPv4-only laptop → jump host → private IP
+# IPv4-only laptop → jump host → CurriePing (private IPv4 or IPv6):
 ssh -i /path/to/key.pem \
-  -o "ProxyCommand=ssh -i /path/to/key.pem -W %h:%p ubuntu@JUMP_PUBLIC_IPV4" \
-  ubuntu@$PRIVATE_IP
+  -o "ProxyCommand=ssh -i /path/to/key.pem -W [%h]:%p ubuntu@JUMP_HOST" \
+  ubuntu@$IPV6
+```
 
-# Dual-stack (CHECK_IPV4=True): SSH directly to the Elastic IP
-# ssh -i /path/to/key.pem ubuntu@$PUBLIC_IPV4
+**Edit targets / settings**, then recreate `monitor` so it reloads env:
+
+```bash
+cd /opt/currieping
+sudo nano .env          # TARGETS=name=url,name=url  (comma-separated)
+sudo docker compose up -d --force-recreate monitor
+```
+
+**Pull latest code and rebuild** (same path the 15‑minute cron uses):
+
+```bash
+cd /opt/currieping
+sudo CURRIEPING_DIR=/opt/currieping /usr/local/bin/currieping-auto-update
+# equivalent manual steps:
+#   sudo git fetch origin main && sudo git reset --hard origin/main
+#   sudo docker compose up -d --build --remove-orphans
+```
+
+**Restart without rebuilding:**
+
+```bash
+cd /opt/currieping
+sudo docker compose restart
+# or: sudo docker compose restart monitor
 ```
 
 ### Enabling the tunnel on an existing box
-
-Install path is `/opt/currieping` for new deploys; older hosts may be `/opt/curieping` (`ls /opt`).
 
 1. Create the tunnel + public hostname (`http://app:8080`) as in §1; point DNS with a **CNAME** to `<tunnel-id>.cfargotunnel.com` (remove old **A** / **AAAA**).
 2. On the host:
@@ -273,9 +298,7 @@ Install path is `/opt/currieping` for new deploys; older hosts may be `/opt/curi
 sudo apt-get update
 sudo DEBIAN_FRONTEND=noninteractive apt-get -y upgrade
 
-APP_DIR=/opt/currieping
-[ -d /opt/curieping ] && APP_DIR=/opt/curieping
-cd "$APP_DIR"
+cd /opt/currieping
 sudo git pull   # once these changes are on the branch you deploy
 
 # Ensure .env has the token and enables the compose profile
@@ -307,7 +330,7 @@ Only do this if you want the status page to check IPv4 as well (and accept the p
 3. On the host:
 
 ```bash
-cd /opt/currieping   # or /opt/curieping
+cd /opt/currieping
 sudo sed -i 's|^CHECK_IPV4=.*|CHECK_IPV4=True|' .env \
   || echo 'CHECK_IPV4=True' | sudo tee -a .env
 sudo docker compose up -d --build --remove-orphans
@@ -321,7 +344,7 @@ sudo docker compose up -d --build --remove-orphans
 sudo apt-get update
 sudo DEBIAN_FRONTEND=noninteractive apt-get -y upgrade
 
-cd /opt/currieping   # or: cd /opt/curieping
+cd /opt/currieping
 sudo docker compose ps
 sudo docker compose logs -f --tail=100
 ```
