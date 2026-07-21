@@ -74,6 +74,47 @@ jobs:
             fi
             echo "No critical Vulture issues found."
 
+      # Same check as pre-commit check-yaml: invalid compose YAML bricks host
+      # auto-update (git pull succeeds, `docker compose up --build` never runs).
+      - run:
+          name: Check YAML
+          command: |
+            set -euo pipefail
+            python - <<'PY'
+            import sys
+            from pathlib import Path
+
+            import yaml
+
+            skip_dirs = {
+                ".git",
+                ".mypy_cache",
+                ".ruff_cache",
+                ".venv",
+                "venv",
+                "node_modules",
+                "reports",
+            }
+            paths = sorted(
+                p
+                for p in Path(".").rglob("*")
+                if p.suffix.lower() in {".yml", ".yaml"}
+                and not any(part in skip_dirs for part in p.parts)
+            )
+            if not paths:
+                sys.exit("No YAML files found to check")
+            failed = False
+            for path in paths:
+                try:
+                    yaml.safe_load(path.read_text(encoding="utf-8"))
+                except yaml.YAMLError as exc:
+                    failed = True
+                    print(f"{path}: {exc}", file=sys.stderr)
+            if failed:
+                sys.exit(1)
+            print(f"YAML OK ({len(paths)} files)")
+            PY
+
       - store_artifacts:
           path: reports
           destination: lint-reports

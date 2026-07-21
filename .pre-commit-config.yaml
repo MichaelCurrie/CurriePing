@@ -128,3 +128,55 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
+
+      # Catches compose/YAML typos before they brick host auto-update
+      # (`docker compose` dies on invalid YAML; cron then never rebuilds).
+      - id: check-yaml
+        name: Check YAML
+        entry: python
+        args:
+          - -c
+          - |
+            import os
+            import subprocess
+            import sys
+            from pathlib import Path
+
+            import yaml
+
+            repo_root = subprocess.check_output(
+                ["git", "rev-parse", "--show-toplevel"], text=True
+            ).strip()
+            os.chdir(repo_root)
+
+            skip_dirs = {
+                ".git",
+                ".mypy_cache",
+                ".ruff_cache",
+                ".venv",
+                "venv",
+                "node_modules",
+                "reports",
+            }
+            paths = sorted(
+                p
+                for p in Path(".").rglob("*")
+                if p.suffix.lower() in {".yml", ".yaml"}
+                and not any(part in skip_dirs for part in p.parts)
+            )
+            if not paths:
+                sys.exit("No YAML files found to check")
+
+            failed = False
+            for path in paths:
+                try:
+                    yaml.safe_load(path.read_text(encoding="utf-8"))
+                except yaml.YAMLError as exc:
+                    failed = True
+                    print(f"{path}: {exc}", file=sys.stderr)
+            if failed:
+                sys.exit(1)
+            print(f"YAML OK ({len(paths)} files)")
+        language: system
+        types: [yaml]
+        pass_filenames: false

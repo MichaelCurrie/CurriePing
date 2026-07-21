@@ -9,3 +9,4 @@ ty==0.0.11
 vulture==2.14
 mypy==1.19.1
 types-requests
+PyYAML==6.0.3
