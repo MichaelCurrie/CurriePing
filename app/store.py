@@ -322,13 +322,18 @@ def component(
     assert _conn is not None
     with _lock:
         since = int(time.time()) - days * 86400
+        # avg_latency averages only successful checks: it answers "how fast is
+        # this site when it responds", so a timeout/DNS-fail latency does not
+        # distort the daily response-time bar. CASE→NULL is used (not FILTER)
+        # for compatibility with older SQLite builds.
         rows = _conn.execute(
             "SELECT strftime('%Y-%m-%d', ts, 'unixepoch') AS d, "
-            "SUM(ok) AS up, COUNT(*) AS total FROM checks "
-            "WHERE target = ? AND ts >= ? GROUP BY d",
+            "SUM(ok) AS up, COUNT(*) AS total, "
+            "AVG(CASE WHEN ok = 1 THEN latency_ms END) AS avg_latency "
+            "FROM checks WHERE target = ? AND ts >= ? GROUP BY d",
             (target, since),
         ).fetchall()
-        by_day = {d: (up, total) for d, up, total in rows}
+        by_day = {d: (up, total, avg_latency) for d, up, total, avg_latency in rows}
         recent = _recent_pings(target, recent_count)
         latest = _latest(target)
 
@@ -339,7 +344,7 @@ def component(
     for i in range(days - 1, -1, -1):
         day: date = today - timedelta(days=i)
         key = day.isoformat()
-        up, total = by_day.get(key, (0, 0))
+        up, total, avg_latency = by_day.get(key, (0, 0, None))
         up_sum += up
         total_sum += total
         if total == 0:
@@ -347,15 +352,17 @@ def component(
             continue
         ratio = up / total
         state = "up" if ratio >= 0.999 else ("down" if ratio == 0 else "partial")
-        buckets.append(
-            {
-                "date": key,
-                "state": state,
-                "ratio": round(ratio, 4),
-                "up": up,
-                "total": total,
-            }
-        )
+        bucket: dict[str, object] = {
+            "date": key,
+            "state": state,
+            "ratio": round(ratio, 4),
+            "up": up,
+            "total": total,
+        }
+        # Omit on fully-down days (no successful check → no response time to plot).
+        if avg_latency is not None:
+            bucket["latency_ms"] = round(float(avg_latency), 1)
+        buckets.append(bucket)
 
     uptime = round(100.0 * up_sum / total_sum, 3) if total_sum else None
 
