@@ -10,6 +10,11 @@ HTTP status below 400 within the timeout. A multi-URL group is up only when
 every URL is up on every probed family and every URL's final host (after
 redirects) matches the group's canonical host (from the first URL).
 
+Probe starts are paced (config.PROBE_RATE_PER_SECOND) rather than fired all at
+once. Targets tend to share a handful of origins, so an unpaced cycle lands as
+one simultaneous volley from a single source IP and gets rejected by whatever
+per-client rate limit sits in front of them -- reporting a healthy site as down.
+
 Probe failures are stored as short labels (e.g. "connection refused"), not the
 raw urllib3/requests exception text — those strings are for the status page and
 ntfy alerts, not for debugging the HTTP client.
@@ -191,7 +196,36 @@ def _probe_family(url: str, family: int) -> _FamilyResult:
         _tls.family = None
 
 
+class _Pacer:
+    """Hand out start slots no faster than `rate` per second.
+
+    Slots are assigned from a monotonically advancing cursor rather than by
+    sleeping a fixed gap, so N threads calling wait() concurrently are spread
+    across N slots instead of all sleeping the same interval and then firing
+    together. The cursor never trails more than one interval behind now, so an
+    idle gap does not bank up credit for a later burst.
+    """
+
+    def __init__(self, rate: float) -> None:
+        self._interval = 1.0 / rate
+        self._lock = threading.Lock()
+        self._next = 0.0
+
+    def wait(self) -> None:
+        with self._lock:
+            now = time.monotonic()
+            slot = max(now, self._next)
+            self._next = slot + self._interval
+        delay = slot - now
+        if delay > 0:
+            time.sleep(delay)
+
+
+_pacer = _Pacer(config.PROBE_RATE_PER_SECOND)
+
+
 def _probe_url(url: str) -> _UrlProbe:
+    _pacer.wait()
     ipv6 = _probe_family(url, socket.AF_INET6) if config.CHECK_IPV6 else None
     ipv4 = _probe_family(url, socket.AF_INET) if config.CHECK_IPV4 else None
     return _UrlProbe(url=url, host=_host_of(url), ipv6=ipv6, ipv4=ipv4)
@@ -308,10 +342,39 @@ def check_one(target: config.Target, probes: list[_UrlProbe]) -> dict[str, objec
     }
 
 
+def _cycle_budget_warning(member_count: int, workers: int) -> str | None:
+    """Warn when a cycle cannot get through every member inside one interval.
+
+    Two independent ceilings, whichever bites first: the pacer only starts
+    PROBE_RATE_PER_SECOND probes a second, and the pool only holds `workers` in
+    flight. The pool bound is what matters in the bad case, where every target
+    is unreachable and each probe burns the full timeout.
+    """
+    if not member_count:
+        return None
+    timeout = config.REQUEST_TIMEOUT_SECONDS
+    paced = member_count / config.PROBE_RATE_PER_SECOND + timeout
+    pooled = member_count * timeout / workers
+    worst = max(paced, pooled)
+    if worst <= config.CHECK_INTERVAL_SECONDS:
+        return None
+    return (
+        f"{member_count} probes at {config.PROBE_RATE_PER_SECOND}/s with "
+        f"{workers} workers needs ~{worst:.0f}s worst case but "
+        f"CHECK_INTERVAL_SECONDS is {config.CHECK_INTERVAL_SECONDS}; cycles will "
+        f"overrun. Raise PROBE_RATE_PER_SECOND, PROBE_MAX_CONCURRENCY or "
+        f"CHECK_INTERVAL_SECONDS."
+    )
+
+
 def _run() -> None:
-    # One worker per member URL so a slow alias never delays the whole cycle.
     members = [(t, url) for t in config.TARGETS for url in t.urls]
-    workers = max(4, len(members))
+    # Bounded pool: the pacer sets the pace, this just caps how many slow or
+    # timing-out probes can be in flight at once.
+    workers = max(4, min(config.PROBE_MAX_CONCURRENCY, len(members) or 1))
+    warning = _cycle_budget_warning(len(members), workers)
+    if warning:
+        print(f"checker: {warning}", flush=True)
     while True:
         cycle_start = time.monotonic()
         if config.TARGETS:

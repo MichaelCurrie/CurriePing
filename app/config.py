@@ -86,6 +86,13 @@ def _int(name: str, default: int) -> int:
         return default
 
 
+def _float(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, "").strip() or default)
+    except ValueError:
+        return default
+
+
 def _bool(name: str) -> bool:
     """Require env var exactly `True` or `False` (KeyError if unset)."""
     raw = os.environ[name]
@@ -112,6 +119,28 @@ USER_AGENT = os.environ.get(
 ).strip()
 
 TARGETS = _parse_targets(os.environ.get("TARGETS", ""))
+
+# Probe pacing. Launching every target at once makes one host answer a large
+# simultaneous volley from a single source IP, which reads as abuse: an nginx
+# `limit_req` bucket keyed on the client address rejects the excess with 503 and
+# the status page reports a healthy site as down. So probe starts are spread over
+# time instead.
+#
+# PROBE_RATE_PER_SECOND is the ceiling on probe *starts*. Size it under the
+# tightest rate limit the targets sit behind, and leave room: a probe that
+# follows a redirect costs the destination two requests, not one, and each
+# enabled address family is a separate request again.
+#
+# PROBE_MAX_CONCURRENCY bounds how many probes are in flight at once, so a batch
+# of unreachable targets waiting out REQUEST_TIMEOUT_SECONDS cannot pile up
+# unboundedly. Keep rate x timeout under this or the pacer, not the pool, is what
+# limits throughput.
+#
+# A cycle needs to finish inside CHECK_INTERVAL_SECONDS. Worst case is roughly
+# (targets / rate) + timeout seconds; checker.py warns if the configured values
+# cannot fit.
+PROBE_RATE_PER_SECOND = max(0.1, _float("PROBE_RATE_PER_SECOND", 4.0))
+PROBE_MAX_CONCURRENCY = max(1, _int("PROBE_MAX_CONCURRENCY", 12))
 
 # Probe address families. IPv6 is always on. IPv4 needs public IPv4 egress on
 # the host (e.g. an AWS Elastic IP, ~$3.65/mo); set False on IPv6-only EC2.
