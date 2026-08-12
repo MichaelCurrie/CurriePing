@@ -243,7 +243,7 @@ echo "Public access is via Cloudflare Tunnel → https://$STATUS_DOMAIN"
 
 ```bash
 curl -I "https://$STATUS_DOMAIN"
-docker compose -f /opt/currieping/docker-compose.yml ps   # on the host: monitor + app (edge) + tunnel (+ proxy)
+docker compose -f /opt/currieping/docker-compose.yml ps   # on the host: monitor + app (edge) + tunnel
 # On the status page header: IPv6 should be checked; IPv4 only if CHECK_IPV4=True.
 ```
 
@@ -351,7 +351,7 @@ sudo docker compose logs -f --tail=100
 
 ### Alternative: direct IPv6 only (no Cloudflare)
 
-Skip the tunnel. Publish an **AAAA** to the instance IPv6, keep SG 80/443 open on `::/0`, set `STATUS_DOMAIN` for Caddy/Let’s Encrypt, leave `COMPOSE_PROFILES` empty. IPv4-only clients cannot open the page. Do **not** add a NAT Gateway just for IPv4 visitors — the tunnel is cheaper. Keep `CHECK_IPV4=False` unless you also attach a public IPv4 for probes.
+Skip the tunnel. Publish an **AAAA** to the instance IPv6, keep SG 80/443 open on `::/0`, set `STATUS_DOMAIN` for Caddy/Let’s Encrypt, and set `COMPOSE_PROFILES=direct` so the `proxy` Caddy starts (it is profile-gated so tunnel deploys do not pay for it). IPv4-only clients cannot open the page. Do **not** add a NAT Gateway just for IPv4 visitors — the tunnel is cheaper. Keep `CHECK_IPV4=False` unless you also attach a public IPv4 for probes.
 
 ### Static site export (write-to-disk)
 

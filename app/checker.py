@@ -15,6 +15,11 @@ once. Targets tend to share a handful of origins, so an unpaced cycle lands as
 one simultaneous volley from a single source IP and gets rejected by whatever
 per-client rate limit sits in front of them -- reporting a healthy site as down.
 
+Probes go through a per-family requests.Session, so the many members of an
+alias group that redirect onto one canonical host reuse a single connection
+instead of paying a TLS handshake each. The handshake dominates a probe of a
+nearby CDN, so this is most of the floor on a healthy target.
+
 Probe failures are stored as short labels (e.g. "connection refused"), not the
 raw urllib3/requests exception text — those strings are for the status page and
 ntfy alerts, not for debugging the HTTP client.
@@ -22,6 +27,7 @@ ntfy alerts, not for debugging the HTTP client.
 
 from __future__ import annotations
 
+import http.cookiejar
 import socket
 import threading
 import time
@@ -68,6 +74,72 @@ _ERRNO_LABELS: dict[int, str] = {
     -2: "DNS lookup failed",
     -3: "DNS lookup failed",
 }
+
+
+class _BlockCookies(http.cookiejar.CookiePolicy):
+    """Refuse every cookie: the sessions are shared, targets are not."""
+
+    netscape = True
+    rfc2965 = False
+    hide_cookie2 = False
+
+    def set_ok(self, cookie: object, request: object) -> bool:
+        return False
+
+    def return_ok(self, cookie: object, request: object) -> bool:
+        return False
+
+    def domain_return_ok(self, domain: str, request: object) -> bool:
+        return False
+
+    def path_return_ok(self, path: str, request: object) -> bool:
+        return False
+
+
+# One Session per address family, so urllib3's connection pools (keyed only by
+# scheme/host/port) can never hand an IPv6-established connection to an IPv4
+# probe -- which would silently defeat the family pinning this module exists to
+# enforce. Pools are thread-safe; the Session state that is not (cookies) is
+# disabled outright.
+_sessions: dict[int, requests.Session] = {}
+_sessions_lock = threading.Lock()
+
+# Read at most this much of a body to hand the connection back to the pool. An
+# unread body forces urllib3 to drop the connection on close(), so without this
+# every probe would still pay a fresh TLS handshake. Anything larger than the
+# cap is not worth draining -- close() and eat the handshake next time.
+_DRAIN_LIMIT_BYTES = 256 * 1024
+
+
+def _session_for(family: int) -> requests.Session:
+    session = _sessions.get(family)
+    if session is not None:
+        return session
+    with _sessions_lock:
+        session = _sessions.get(family)
+        if session is None:
+            session = requests.Session()
+            session.cookies.set_policy(_BlockCookies())
+            pool = max(8, config.PROBE_MAX_CONCURRENCY)
+            adapter = requests.adapters.HTTPAdapter(
+                pool_connections=pool, pool_maxsize=pool, max_retries=0
+            )
+            session.mount("https://", adapter)
+            session.mount("http://", adapter)
+            _sessions[family] = session
+    return session
+
+
+def _drain(resp: requests.Response) -> None:
+    """Consume the body so urllib3 returns the connection to the pool."""
+    try:
+        read = 0
+        for chunk in resp.iter_content(65536):
+            read += len(chunk)
+            if read > _DRAIN_LIMIT_BYTES:
+                return
+    except Exception:
+        pass  # a body we cannot drain only costs us the pooled connection
 
 
 @dataclass(frozen=True)
@@ -149,23 +221,27 @@ def _probe_family(url: str, family: int) -> _FamilyResult:
     start = time.monotonic()
     _tls.family = family
     try:
-        resp = requests.get(
+        resp = _session_for(family).get(
             url,
             timeout=config.REQUEST_TIMEOUT_SECONDS,
             allow_redirects=True,
             headers={"User-Agent": config.USER_AGENT},
             stream=True,
         )
+        # Stop the clock at response headers, before draining: latency stays
+        # "time to first byte", the same thing this metric has always meant.
+        latency_ms = round((time.monotonic() - start) * 1000, 1)
         status_code = resp.status_code
         ok = status_code < 400
         error = None if ok else f"HTTP {status_code}"
         final_url = resp.url
+        _drain(resp)
         resp.close()
         return _FamilyResult(
             ok=ok,
             status_code=status_code,
             error=error,
-            latency_ms=round((time.monotonic() - start) * 1000, 1),
+            latency_ms=latency_ms,
             final_url=final_url,
         )
     except requests.exceptions.SSLError as exc:

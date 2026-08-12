@@ -61,9 +61,15 @@ services:
       monitor:
         condition: service_healthy
 
+  # Only needed when visitors reach this host directly (AAAA straight at the
+  # instance, or local dev). With COMPOSE_PROFILES=tunnel the hostname is a
+  # CNAME to cfargotunnel.com and nothing resolves here, so running Caddy would
+  # just hold :80/:443 open and cost ~20 MB on a 512 MB box. Opt in with
+  # COMPOSE_PROFILES=direct (or `tunnel,direct`).
   proxy:
     image: caddy:2
     restart: unless-stopped
+    profiles: ["direct"]
     ports:
       - "80:80"
       - "443:443"
