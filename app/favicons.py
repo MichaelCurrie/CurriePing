@@ -18,6 +18,7 @@ Resolution order per site, first hit wins:
 from __future__ import annotations
 
 import re
+import socket
 import threading
 import time
 from collections.abc import Callable
@@ -25,7 +26,7 @@ from urllib.parse import quote, urljoin, urlparse
 
 import requests
 
-from . import config, store
+from . import checker, config, store
 
 REFRESH_INTERVAL_SECONDS = 3600
 
@@ -196,6 +197,11 @@ def refresh_all() -> None:
 
 
 def _run() -> None:
+    # Without IPv4 egress every IPv4 address (usually listed first) times out
+    # before urllib3 tries IPv6, stretching a sweep to ~20 minutes. Go straight
+    # to IPv6, matching what the checker probes.
+    if not config.CHECK_IPV4:
+        checker.pin_thread_family(socket.AF_INET6)
     while True:
         try:
             refresh_all()

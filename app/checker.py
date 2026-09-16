@@ -59,6 +59,16 @@ def _allowed_gai_family() -> socket.AddressFamily:
     return _orig_allowed_gai_family()
 
 
+def pin_thread_family(family: int | None) -> None:
+    """Force the calling thread's HTTP lookups onto one address family.
+
+    For other long-lived threads (favicon refresh) on hosts without IPv4
+    egress, where an IPv4 connect is silently dropped and burns the whole
+    timeout before urllib3 falls back to IPv6. None restores the default.
+    """
+    _tls.family = family
+
+
 # setattr: intentional monkeypatch; a direct attribute assign trips ty's
 # invalid-assignment (implicit function shadowing).
 setattr(urllib3_connection, "allowed_gai_family", _allowed_gai_family)
